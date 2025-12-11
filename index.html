@@ -535,18 +535,13 @@
                     </button>
                 </div>
                 <div id="drive-files" style="display: none;">
-                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <select id="audio-select" style="flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: white; font-size: 0.9rem;">
-                            <option value="">Select audio file...</option>
-                        </select>
-                    </div>
                     <div style="display: flex; gap: 10px;">
-                        <select id="transcript-select" style="flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: white; font-size: 0.9rem;">
-                            <option value="">Select transcript file...</option>
+                        <select id="dialogue-select" style="flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: white; font-size: 0.9rem;">
+                            <option value="">Select dialogue...</option>
                         </select>
                     </div>
                     <button class="secondary" onclick="loadFromDrive()" style="width: 100%; margin-top: 12px;">
-                        <span>📥</span> Load Selected Files
+                        <span>📥</span> Load Dialogue
                     </button>
                 </div>
             </div>
@@ -1178,6 +1173,8 @@
             await listDriveFiles();
         }
 
+        let dialogues = {}; // Store detected dialogues: { "1": { audioId, transcriptId }, "2": {...} }
+
         async function listDriveFiles() {
             try {
                 // First, find the DialoguePlayer folder
@@ -1203,20 +1200,45 @@
                 
                 driveFiles = filesResponse.result.files || [];
                 
-                // Populate dropdowns
-                const audioSelect = document.getElementById('audio-select');
-                const transcriptSelect = document.getElementById('transcript-select');
-                
-                audioSelect.innerHTML = '<option value="">Select audio file...</option>';
-                transcriptSelect.innerHTML = '<option value="">Select transcript file...</option>';
+                // Detect dialogues by matching audio{N} and transcript{N} pairs
+                dialogues = {};
                 
                 driveFiles.forEach(file => {
-                    if (file.name.endsWith('.webm') || file.name.endsWith('.mp3') || file.name.endsWith('.wav')) {
-                        audioSelect.innerHTML += `<option value="${file.id}">${file.name}</option>`;
-                    } else if (file.name.endsWith('.txt')) {
-                        transcriptSelect.innerHTML += `<option value="${file.id}">${file.name}</option>`;
+                    // Match audio1.webm, audio2.mp3, etc.
+                    const audioMatch = file.name.match(/^audio(\d+)\.(webm|mp3|wav)$/i);
+                    if (audioMatch) {
+                        const num = audioMatch[1];
+                        if (!dialogues[num]) dialogues[num] = {};
+                        dialogues[num].audioId = file.id;
+                        dialogues[num].audioName = file.name;
+                    }
+                    
+                    // Match transcript1.txt, transcript2.txt, etc.
+                    const transcriptMatch = file.name.match(/^transcript(\d+)\.txt$/i);
+                    if (transcriptMatch) {
+                        const num = transcriptMatch[1];
+                        if (!dialogues[num]) dialogues[num] = {};
+                        dialogues[num].transcriptId = file.id;
+                        dialogues[num].transcriptName = file.name;
                     }
                 });
+                
+                // Populate dropdown with complete dialogues only
+                const dialogueSelect = document.getElementById('dialogue-select');
+                dialogueSelect.innerHTML = '<option value="">Select dialogue...</option>';
+                
+                const sortedNums = Object.keys(dialogues).sort((a, b) => parseInt(a) - parseInt(b));
+                
+                sortedNums.forEach(num => {
+                    const d = dialogues[num];
+                    if (d.audioId && d.transcriptId) {
+                        dialogueSelect.innerHTML += `<option value="${num}">Dialogue ${num}</option>`;
+                    }
+                });
+                
+                if (sortedNums.length === 0) {
+                    showToast('No dialogues found. Add audio1.webm + transcript1.txt');
+                }
                 
             } catch (err) {
                 console.error('Error listing files:', err);
@@ -1225,30 +1247,42 @@
         }
 
         async function loadFromDrive() {
-            const audioId = document.getElementById('audio-select').value;
-            const transcriptId = document.getElementById('transcript-select').value;
+            const dialogueNum = document.getElementById('dialogue-select').value;
             
-            if (!audioId || !transcriptId) {
-                showToast('Please select both audio and transcript');
+            if (!dialogueNum) {
+                showToast('Please select a dialogue');
                 return;
             }
             
-            showToast('Loading files...');
+            const dialogue = dialogues[dialogueNum];
+            if (!dialogue || !dialogue.audioId || !dialogue.transcriptId) {
+                showToast('Dialogue files not found');
+                return;
+            }
+            
+            showToast('Loading Dialogue ' + dialogueNum + '...');
             
             try {
-                // Get audio file
-                const audioResponse = await gapi.client.drive.files.get({
-                    fileId: audioId,
-                    alt: 'media'
-                });
+                // Get audio file using fetch with access token (binary data)
+                const token = gapi.client.getToken().access_token;
+                const audioResponse = await fetch(
+                    `https://www.googleapis.com/drive/v3/files/${dialogue.audioId}?alt=media`,
+                    {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }
+                );
                 
-                // Convert to blob URL
-                const audioBlob = new Blob([audioResponse.body], { type: 'audio/webm' });
+                if (!audioResponse.ok) {
+                    throw new Error('Failed to fetch audio file');
+                }
+                
+                // Get the blob directly
+                const audioBlob = await audioResponse.blob();
                 audioBlobUrl = URL.createObjectURL(audioBlob);
                 
                 // Get transcript file
                 const transcriptResponse = await gapi.client.drive.files.get({
-                    fileId: transcriptId,
+                    fileId: dialogue.transcriptId,
                     alt: 'media'
                 });
                 
@@ -1256,12 +1290,11 @@
                 document.getElementById('dialogueText').value = transcriptResponse.body;
                 
                 // Update file display
-                const audioFile = driveFiles.find(f => f.id === audioId);
-                document.getElementById('file-name').textContent = audioFile.name;
-                document.getElementById('file-info').textContent = 'From Google Drive';
+                document.getElementById('file-name').textContent = `Dialogue ${dialogueNum}`;
+                document.getElementById('file-info').textContent = dialogue.audioName;
                 document.getElementById('file-display').classList.add('has-file');
                 
-                showToast('Files loaded! Click Start to begin.');
+                showToast('Dialogue ' + dialogueNum + ' loaded! Click Start to begin.');
                 
             } catch (err) {
                 console.error('Error loading files:', err);
