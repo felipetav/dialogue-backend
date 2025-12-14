@@ -628,6 +628,131 @@
             border-radius: 0 2px 2px 0;
         }
 
+        /* Flashcard Mode Styles */
+        .flashcard-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            min-height: 60vh;
+        }
+
+        .flashcard-container.show {
+            display: flex;
+        }
+
+        .flashcard-progress {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+        }
+
+        .flashcard {
+            width: 100%;
+            max-width: 400px;
+            height: 300px;
+            perspective: 1000px;
+            cursor: pointer;
+        }
+
+        .flashcard-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+
+        .flashcard.flipped .flashcard-inner {
+            transform: rotateY(180deg);
+        }
+
+        .flashcard-front, .flashcard-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            border: 1px solid var(--border);
+        }
+
+        .flashcard-front {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(34, 211, 238, 0.05));
+        }
+
+        .flashcard-back {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(34, 211, 238, 0.05));
+            transform: rotateY(180deg);
+        }
+
+        .flashcard-word {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        .flashcard-sentence {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .flashcard-hint {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 20px;
+        }
+
+        .flashcard-controls {
+            display: flex;
+            gap: 12px;
+            margin-top: 30px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .flashcard-controls button {
+            flex: 1;
+        }
+
+        .flashcard-nav {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .flashcard-nav button {
+            min-width: 60px;
+            padding: 12px 20px;
+        }
+
+        .tts-button {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+
+        .tts-button:hover {
+            transform: scale(1.2);
+        }
+
+        .tts-button:active {
+            transform: scale(0.9);
+        }
+
         /* Responsive */
         @media (min-width: 768px) {
             .controls {
@@ -685,6 +810,9 @@
                     <select id="dialogue-select" onchange="loadFromDrive()" style="width: 100%; padding: 16px; border-radius: 14px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: white; font-size: 1.1rem; font-weight: 500; cursor: pointer;">
                         <option value="">Select dialogue...</option>
                     </select>
+                    <button class="secondary" id="train-btn" onclick="startFlashcardMode()" style="width: 100%; margin-top: 12px; display: none;">
+                        <span>🎴</span> Train Flashcards (<span id="total-highlights-count">0</span>)
+                    </button>
                 </div>
             </div>
 
@@ -734,6 +862,36 @@
                     <h3>Ready to Learn</h3>
                     <p>Add your audio and dialogue text above to begin</p>
                 </div>
+            </div>
+        </div>
+
+        <!-- Flashcard Training Mode -->
+        <div class="flashcard-container" id="flashcard-container">
+            <div class="flashcard-progress" id="flashcard-progress">Card 1 of 10</div>
+            
+            <div class="flashcard" id="flashcard" onclick="flipCard()">
+                <div class="flashcard-inner">
+                    <div class="flashcard-front">
+                        <div class="flashcard-word" id="flashcard-front-word">Loading...</div>
+                        <div class="flashcard-sentence" id="flashcard-front-sentence"></div>
+                        <div class="flashcard-hint">Tap to flip</div>
+                    </div>
+                    <div class="flashcard-back">
+                        <button class="tts-button" onclick="event.stopPropagation(); speakRussian()">🔊</button>
+                        <div class="flashcard-word" id="flashcard-back-word">Привет</div>
+                        <div class="flashcard-sentence" id="flashcard-back-sentence"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flashcard-nav">
+                <button class="secondary" onclick="prevCard()">← Prev</button>
+                <button class="primary" onclick="nextCard()">Next →</button>
+            </div>
+
+            <div class="flashcard-controls">
+                <button class="danger" onclick="exitFlashcardMode()">✕ Exit</button>
+                <button class="secondary" onclick="shuffleCards()">🔀 Shuffle</button>
             </div>
         </div>
 
@@ -987,7 +1145,7 @@
             });
         }
         
-        // Highlight Selection
+        // Highlight Selection - NOW SAVES FULL RUSSIAN SENTENCE
         document.addEventListener('mouseup', () => {
             if (mode !== 'playback') return;
             const selection = window.getSelection();
@@ -997,7 +1155,9 @@
             const targetEl = anchor.parentElement?.closest('.target') || (anchor.nodeType===1?anchor.closest('.target'):null);
             
             if (targetEl && !targetEl.classList.contains('hidden-text')) {
-                addHighlight(text, decodeURIComponent(targetEl.dataset.translation));
+                const fullRussianSentence = targetEl.textContent.trim();
+                const translation = decodeURIComponent(targetEl.dataset.translation);
+                addHighlight(text, translation, fullRussianSentence);
                 selection.removeAllRanges();
             }
         });
@@ -1152,6 +1312,7 @@
                 <div class="highlights-sidebar-item">
                     <button class="highlights-sidebar-remove" onclick="removeHighlight(${i})">✕</button>
                     <div class="highlights-sidebar-russian">${h.russian}</div>
+                    <div class="highlights-sidebar-translation" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">${h.fullSentence && h.fullSentence !== h.russian ? '📝 ' + h.fullSentence : ''}</div>
                     <div class="highlights-sidebar-translation">${h.translation}</div>
                 </div>`).join('') : '<div class="highlights-sidebar-empty">Select text to highlight</div>';
                 
@@ -1164,11 +1325,22 @@
             }
         }
 
-        function addHighlight(russian, translation) {
+        function addHighlight(russian, translation, fullSentence = '') {
             if (highlights.some(h => h.russian === russian)) return;
-            highlights.push({ russian, translation });
+            highlights.push({ 
+                russian, 
+                translation,
+                fullSentence: fullSentence || russian, // Save full sentence
+                translatedWord: null // Will be filled by Google Translate
+            });
             updateHighlightsUI();
             showToast('✓ Added');
+            
+            // Translate the word/phrase asynchronously
+            translateText(russian).then(translated => {
+                const h = highlights.find(x => x.russian === russian);
+                if (h) h.translatedWord = translated;
+            });
         }
         function removeHighlight(i) { highlights.splice(i, 1); updateHighlightsUI(); }
         function clearAllHighlights() { if(confirm('Clear?')) { highlights=[]; updateHighlightsUI(); } }
@@ -1179,9 +1351,187 @@
         // Add Key Listener
         document.body.onkeyup = (e) => {
             if (e.code==='Space') { e.preventDefault(); if (mode==='playback') playLine(currentLineIndex++); }
+            if (e.code==='ArrowRight' && mode==='flashcard') nextCard();
+            if (e.code==='ArrowLeft' && mode==='flashcard') prevCard();
+            if (e.code==='Enter' && mode==='flashcard') flipCard();
         };
 
-        window.addEventListener('DOMContentLoaded', loadDialogueList);
+        // ============================================
+        // TRANSLATION (Free Google Translate API)
+        // ============================================
+        async function translateText(text, targetLang = 'pt') {
+            try {
+                // Using free Google Translate endpoint
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ru&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                return data[0][0][0]; // Extract translated text
+            } catch (err) {
+                console.error('Translation error:', err);
+                return text; // Return original if fails
+            }
+        }
+
+        // ============================================
+        // TEXT-TO-SPEECH (Free Web Speech API)
+        // ============================================
+        function speakRussian(text) {
+            if (!text && flashcardDeck.length > 0) {
+                text = flashcardDeck[currentCardIndex].russian;
+            }
+            if (!text) return;
+            
+            // Cancel any ongoing speech
+            window.speechSynthesis.cancel();
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ru-RU';
+            utterance.rate = 0.9;
+            
+            // Try to find Russian voice
+            const voices = window.speechSynthesis.getVoices();
+            const russianVoice = voices.find(v => v.lang.startsWith('ru'));
+            if (russianVoice) utterance.voice = russianVoice;
+            
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Load voices when available
+        window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.getVoices();
+        };
+
+        // ============================================
+        // FLASHCARD MODE
+        // ============================================
+        let flashcardDeck = [];
+        let currentCardIndex = 0;
+        let allHighlightsForTraining = [];
+
+        async function loadAllHighlightsForTraining() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/all-highlights`);
+                if (res.ok) {
+                    allHighlightsForTraining = await res.json();
+                    updateTrainButton();
+                }
+            } catch (err) {
+                console.error('Failed to load highlights for training:', err);
+            }
+        }
+
+        function updateTrainButton() {
+            const btn = document.getElementById('train-btn');
+            const count = document.getElementById('total-highlights-count');
+            if (allHighlightsForTraining.length > 0) {
+                btn.style.display = 'flex';
+                count.textContent = allHighlightsForTraining.length;
+            } else {
+                btn.style.display = 'none';
+            }
+        }
+
+        async function startFlashcardMode() {
+            if (allHighlightsForTraining.length === 0) {
+                showToast('No highlights to train!');
+                return;
+            }
+            
+            // Prepare deck with translations
+            flashcardDeck = [...allHighlightsForTraining];
+            currentCardIndex = 0;
+            
+            // Translate cards that don't have translations yet
+            showToast('Preparing flashcards...');
+            for (let card of flashcardDeck) {
+                if (!card.translatedWord) {
+                    card.translatedWord = await translateText(card.russian);
+                }
+            }
+            
+            mode = 'flashcard';
+            document.getElementById('setup-panel').style.display = 'none';
+            document.getElementById('scroll-container').style.display = 'none';
+            document.getElementById('flashcard-container').classList.add('show');
+            
+            showCard();
+            showToast('Tap card to flip. Use arrows to navigate.');
+        }
+
+        function exitFlashcardMode() {
+            mode = 'setup';
+            document.getElementById('flashcard-container').classList.remove('show');
+            document.getElementById('setup-panel').style.display = 'block';
+            document.getElementById('scroll-container').style.display = 'block';
+            document.getElementById('flashcard').classList.remove('flipped');
+        }
+
+        function showCard() {
+            if (flashcardDeck.length === 0) return;
+            
+            const card = flashcardDeck[currentCardIndex];
+            const flashcardEl = document.getElementById('flashcard');
+            
+            // Reset flip
+            flashcardEl.classList.remove('flipped');
+            
+            // Update progress
+            document.getElementById('flashcard-progress').textContent = 
+                `Card ${currentCardIndex + 1} of ${flashcardDeck.length}`;
+            
+            // Front: Portuguese translation of the word
+            document.getElementById('flashcard-front-word').textContent = 
+                card.translatedWord || card.translation || '...';
+            document.getElementById('flashcard-front-sentence').textContent = 
+                card.translation || ''; // Full sentence in Portuguese
+            
+            // Back: Russian word + full sentence
+            document.getElementById('flashcard-back-word').textContent = card.russian;
+            document.getElementById('flashcard-back-sentence').textContent = 
+                card.fullSentence || card.russian;
+        }
+
+        function flipCard() {
+            const flashcardEl = document.getElementById('flashcard');
+            flashcardEl.classList.toggle('flipped');
+            
+            // Auto-speak when flipping to back
+            if (flashcardEl.classList.contains('flipped')) {
+                setTimeout(() => speakRussian(), 300);
+            }
+        }
+
+        function nextCard() {
+            if (currentCardIndex < flashcardDeck.length - 1) {
+                currentCardIndex++;
+                showCard();
+            } else {
+                showToast('🎉 Last card! Shuffle to continue.');
+            }
+        }
+
+        function prevCard() {
+            if (currentCardIndex > 0) {
+                currentCardIndex--;
+                showCard();
+            }
+        }
+
+        function shuffleCards() {
+            // Fisher-Yates shuffle
+            for (let i = flashcardDeck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [flashcardDeck[i], flashcardDeck[j]] = [flashcardDeck[j], flashcardDeck[i]];
+            }
+            currentCardIndex = 0;
+            showCard();
+            showToast('🔀 Shuffled!');
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadDialogueList();
+            loadAllHighlightsForTraining();
+        });
         
         // CSS for Toast
         const s = document.createElement('style');
