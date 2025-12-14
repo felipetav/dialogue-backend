@@ -768,9 +768,12 @@
         let mode = 'setup';
         let audioReady = false; // Track if audio is ready to seek
         
+        // Current dialogue number for saving highlights
+        let currentDialogueNumber = null;
+        
         // Highlights storage - declare early so it's available in renderList
         const HIGHLIGHTS_EMAIL = 'nasrundin@gmail.com';
-        let highlights = JSON.parse(localStorage.getItem('dialogue_highlights') || '[]');
+        let highlights = []; // Will load from Drive or start empty
 
         function replayCurrentLine() {
             const idx = playbackState.activeLineIndex;
@@ -1261,6 +1264,7 @@
             const count = document.getElementById('highlights-count');
             const list = document.getElementById('highlights-list');
             const appContainer = document.querySelector('.app-container');
+            const footer = document.querySelector('.highlights-sidebar-footer');
             
             // Show sidebar in playback mode
             if (mode === 'playback') {
@@ -1284,6 +1288,21 @@
                     </div>
                 `).join('');
             }
+            
+            // Update footer with Save to Drive button
+            if (footer) {
+                footer.innerHTML = `
+                    <button class="danger" onclick="clearAllHighlights()" style="flex: 0 0 auto; min-width: 50px;">
+                        🗑
+                    </button>
+                    <button class="primary" onclick="saveHighlightsToDrive()" id="save-drive-btn" style="flex: 1;">
+                        💾 Save
+                    </button>
+                    <button class="secondary" onclick="sendHighlightsEmail()" style="flex: 0 0 auto; min-width: 50px;">
+                        📧
+                    </button>
+                `;
+            }
         }
         
         function addHighlight(russian, translation = '') {
@@ -1302,25 +1321,23 @@
                 timestamp: new Date().toISOString()
             });
             
-            localStorage.setItem('dialogue_highlights', JSON.stringify(highlights));
+            // Note: Highlights are saved in memory, click "Save" to sync to Drive
             updateHighlightsUI();
-            showToast('✓ Added!');
+            showToast('✓ Added! Click 💾 to save');
             return true;
         }
         
         function removeHighlight(index) {
             highlights.splice(index, 1);
-            localStorage.setItem('dialogue_highlights', JSON.stringify(highlights));
             updateHighlightsUI();
         }
         
         function clearAllHighlights() {
             if (confirm('Clear all highlights?')) {
                 highlights = [];
-                localStorage.setItem('dialogue_highlights', JSON.stringify(highlights));
                 updateHighlightsUI();
                 renderList(); // Update the + buttons
-                showToast('All highlights cleared');
+                showToast('Cleared! Click 💾 to save');
             }
         }
         
@@ -1392,7 +1409,7 @@
                 dialogues.forEach(d => {
                     const option = document.createElement('option');
                     option.value = JSON.stringify(d); 
-                    option.textContent = d.label;
+                    option.textContent = d.label + (d.highlightsId ? ' ★' : '');
                     select.appendChild(option);
                 });
 
@@ -1414,18 +1431,19 @@
             }
         }
 
-        // 2. Load a specific dialogue when selected
+        // 2. Load a specific dialogue when selected (auto-starts session)
         async function loadFromDrive() {
             const select = document.getElementById('dialogue-select');
             if (!select.value) return;
 
             let data;
             try {
-                data = JSON.parse(select.value); // { label, audioId, transcriptId }
+                data = JSON.parse(select.value); // { label, audioId, transcriptId, number, highlightsId }
             } catch (e) {
                 return; // Invalid selection
             }
             
+            currentDialogueNumber = data.number;
             showToast(`Loading ${data.label}...`);
 
             try {
@@ -1435,7 +1453,34 @@
                 const text = await textRes.text();
                 document.getElementById('dialogueText').value = text;
 
-                // B. Download audio as blob (required for seeking to work)
+                // B. Fetch Highlights from Drive (if exists)
+                if (data.highlightsId) {
+                    try {
+                        const hlRes = await fetch(`${BACKEND_URL}/api/file/${data.highlightsId}`);
+                        if (hlRes.ok) {
+                            const hlText = await hlRes.text();
+                            // Parse TXT format: "russian | translation" per line
+                            highlights = hlText.split('\n')
+                                .filter(line => line.trim())
+                                .map(line => {
+                                    const parts = line.split(' | ');
+                                    return {
+                                        russian: parts[0] || '',
+                                        translation: parts[1] || '',
+                                        timestamp: new Date().toISOString()
+                                    };
+                                });
+                            console.log('Loaded highlights from Drive:', highlights.length);
+                        }
+                    } catch (e) {
+                        console.warn('Could not load highlights file', e);
+                        highlights = [];
+                    }
+                } else {
+                    highlights = []; // Reset if no file exists
+                }
+
+                // C. Download audio as blob (required for seeking to work)
                 showToast('Downloading audio...');
                 const audioUrl = `${BACKEND_URL}/api/file/${data.audioId}`;
                 const audioRes = await fetch(audioUrl);
@@ -1462,11 +1507,66 @@
                 document.getElementById('file-info').textContent = "Audio downloaded ✓";
                 document.getElementById('file-display').classList.add('has-file');
 
-                showToast('Loaded! Press Start.');
+                // AUTO-START: Parse and enter playback mode immediately
+                const hasTimestamps = await parseTextFile();
+                if (lines.length > 0) {
+                    mode = 'playback';
+                    currentLineIndex = 0;
+                    document.getElementById('setup-panel').style.display = 'none';
+                    progressBar.style.display = 'block';
+                    renderList();
+                    updateProgress();
+                    updateHighlightsUI();
+                    showToast('Ready! Tap a card to play.');
+                } else {
+                    showToast('Loaded! Press Start.');
+                }
 
             } catch (err) {
                 console.error(err);
                 showToast('Error loading files: ' + err.message);
+            }
+        }
+
+        // 3. Save Highlights to Drive (as TXT file)
+        async function saveHighlightsToDrive() {
+            if (!currentDialogueNumber) {
+                showToast('No dialogue selected');
+                return;
+            }
+            
+            const btn = document.getElementById('save-drive-btn');
+            if (!btn) return;
+            
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ Saving...';
+            btn.disabled = true;
+
+            try {
+                // Convert highlights to TXT format: "russian | translation" per line
+                const txtContent = highlights
+                    .map(h => `${h.russian} | ${h.translation || ''}`)
+                    .join('\n');
+
+                const res = await fetch(`${BACKEND_URL}/api/dialogues/${currentDialogueNumber}/highlights`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: txtContent
+                });
+
+                if (!res.ok) throw new Error('Save failed');
+                
+                showToast('Highlights saved to Drive! 💾');
+                
+                // Refresh list so the "Has Highlights" label appears
+                loadDialogueList();
+
+            } catch (err) {
+                console.error(err);
+                showToast('Error saving: ' + err.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
             }
         }
 
