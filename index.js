@@ -38,7 +38,7 @@ const getAuth = () => {
     });
 };
 
-const FOLDER_ID = 'YOUR_DRIVE_FOLDER_ID_HERE'; // <--- CHECK THIS!
+const FOLDER_ID = '1xA6Ckfyi_mXEES4h_olxmnJm2i8ueECR'; // <--- CHECK THIS!
 
 // ---------------- API ENDPOINTS ----------------
 
