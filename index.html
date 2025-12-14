@@ -674,12 +674,11 @@
         </header>
 
         <div class="controls" id="setup-panel">
-            <!-- Google Drive Connection -->
             <div class="control-group" id="drive-section">
-                <label>Google Drive</label>
+                <label>Database Connection</label>
                 <div id="drive-status" style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                    <button class="primary" id="drive-connect-btn" onclick="handleAuthClick()" style="flex: 1;">
-                        <span>☁️</span> Connect to Google Drive
+                    <button class="primary" id="drive-connect-btn" disabled style="flex: 1;">
+                        <span>⏳</span> Connecting...
                     </button>
                 </div>
                 <div id="drive-files" style="display: none;">
@@ -742,7 +741,6 @@
             ✨ Tap for next line
         </div>
 
-        <!-- Highlights Sidebar (fixed on right) -->
         <div class="highlights-sidebar" id="highlights-sidebar">
             <div class="highlights-sidebar-header">
                 <h3>📝 Highlights <span class="count" id="highlights-count">0</span></h3>
@@ -762,40 +760,31 @@
     </div>
 
     <script>
-        let currentAudio = null; // Will be created fresh for each segment
+        // CONFIGURATION
+        // REPLACE WITH YOUR RENDER URL
+        const BACKEND_URL = 'https://dialogue-backend.onrender.com';
+
+        let currentAudio = null;
         let lines = []; 
         let currentLineIndex = 0;
         let mode = 'setup';
-        let audioReady = false; // Track if audio is ready to seek
+        let audioReady = false; 
         
-        // Current dialogue number for saving highlights
         let currentDialogueNumber = null;
-        
-        // Highlights storage - declare early so it's available in renderList
         const HIGHLIGHTS_EMAIL = 'nasrundin@gmail.com';
-        let highlights = []; // Will load from Drive or start empty
-
-        function replayCurrentLine() {
-            const idx = playbackState.activeLineIndex;
-            if (idx !== -1) {
-                playLine(idx);
-            }
-        }
+        let highlights = []; 
 
         function debugLog(msg, ...args) {
             console.log(`[DEBUG ${new Date().toISOString().split('T')[1].slice(0, -1)}] ${msg}`, ...args);
         }
 
-        // Global Playback State
         const playbackState = {
             isPlaying: false,
             endTime: 0,
             activeLineIndex: -1
         };
 
-        // High-precision loop
         function playbackLoop() {
-            // Always update time display if audio is loaded
             if (currentAudio && currentAudio.duration) {
                 const timeDisplay = document.getElementById('time-display');
                 if (timeDisplay) {
@@ -804,17 +793,10 @@
             }
 
             if (playbackState.isPlaying && currentAudio) {
-                if (currentAudio.paused) {
-                    // This can happen if the user manually paused, or if the browser stopped it.
-                    // debugLog('Loop: isPlaying=true but audio.paused=true'); 
-                } else {
-                    // Check if we reached the end
+                if (!currentAudio.paused) {
                     if (currentAudio.currentTime >= playbackState.endTime) {
-                        debugLog('End time reached. Current:', currentAudio.currentTime.toFixed(3), 'Target:', playbackState.endTime.toFixed(3));
                         currentAudio.pause();
                         playbackState.isPlaying = false;
-                        
-                        // Visual update
                         const activeEl = document.querySelector('.line-item.active');
                         if (activeEl) activeEl.classList.add('done');
                     }
@@ -822,25 +804,20 @@
             }
             requestAnimationFrame(playbackLoop);
         }
-        // Start the loop immediately
         requestAnimationFrame(playbackLoop);
 
         const container = document.getElementById('lines-list');
-        const scrollContainer = document.getElementById('scroll-container');
         const progressBar = document.getElementById('progress-bar');
         const progressFill = document.getElementById('progress-fill');
 
-        // Check for saved data on load
         if(localStorage.getItem('saved_lines')) {
             document.getElementById('loadBtn').disabled = false;
         }
 
-        // File input handling with visual feedback (for local files)
+        // Local file input
         document.getElementById('audioFile').addEventListener('change', function(e){
             if (e.target.files[0]) {
                 const fileUrl = URL.createObjectURL(e.target.files[0]);
-                
-                // Set up audio
                 if (currentAudio) currentAudio.pause();
                 currentAudio = new Audio(fileUrl);
                 currentAudio.preload = 'auto';
@@ -848,130 +825,68 @@
                 
                 currentAudio.addEventListener('loadedmetadata', () => {
                     audioReady = true;
-                    debugLog('Local audio ready. Duration:', currentAudio.duration);
                 });
                 
-                const fileName = e.target.files[0].name;
-                const fileSize = (e.target.files[0].size / (1024 * 1024)).toFixed(1);
-                document.getElementById('file-name').textContent = fileName;
-                document.getElementById('file-info').textContent = `${fileSize} MB`;
+                document.getElementById('file-name').textContent = e.target.files[0].name;
                 document.getElementById('file-display').classList.add('has-file');
             }
         });
 
         async function parseTextFile() {
             const text = document.getElementById('dialogueText').value;
-            if (!text.trim()) {
-                showToast('Please paste dialogue text');
-                return false;
-            }
+            if (!text.trim()) return false;
             
             const rawLines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-            debugLog(`Found ${rawLines.length} raw lines`);
             
-            // Check for various timestamp formats
             const hasTimestamps = rawLines.some(l => 
-                /^\d{2}:\d{2}[–-]\d{2}:\d{2}/.test(l.trim()) ||           // 00:00–00:07
-                /^\[\d+:\d{2}\s*-\s*\d+:\d{2}\]/.test(l.trim()) ||        // [5:09 - 5:13]
-                /^\d+\.\d+\s*-\s*\d+\.\d+:/.test(l.trim())                // 0.00 - 3.88:
+                /^\d{2}:\d{2}[–-]\d{2}:\d{2}/.test(l.trim()) || 
+                /^\[\d+:\d{2}\s*-\s*\d+:\d{2}\]/.test(l.trim()) ||
+                /^\d+\.\d+\s*-\s*\d+\.\d+:/.test(l.trim())
             );
             
             lines = rawLines.map((l, i) => {
                 let match;
                 if (hasTimestamps) {
-                    // Format: 00:00–00:07 Speaker: Target [Translation]
+                    // 00:00-00:07
                     match = l.match(/^(\d{2}):(\d{2})[–-]\d{2}:\d{2}\s+(.+?):\s*(.+?)\s*\[(.+?)\]/);
-                    if (match) {
-                        const timestamp = parseInt(match[1]) * 60 + parseInt(match[2]);
-                        return { speaker: match[3], target: match[4], english: match[5], timestamp: timestamp };
-                    }
+                    if (match) return { speaker: match[3], target: match[4], english: match[5], timestamp: parseInt(match[1])*60 + parseInt(match[2]) };
                     
-                    // Format: [5:09 - 5:13] Speaker: Target [Translation]
+                    // [5:09 - 5:13]
                     match = l.match(/^\[(\d+):(\d{2})\s*-\s*\d+:\d{2}\]\s*(.+?):\s*(.+?)\s*\[(.+?)\]/);
-                    if (match) {
-                        const timestamp = parseInt(match[1]) * 60 + parseInt(match[2]);
-                        return { speaker: match[3], target: match[4], english: match[5], timestamp: timestamp };
-                    }
+                    if (match) return { speaker: match[3], target: match[4], english: match[5], timestamp: parseInt(match[1])*60 + parseInt(match[2]) };
                     
-                    // Format: 0.00 - 3.88: Speaker: Text [Translation] (with speaker name)
+                    // 0.00 - 3.88: Speaker
                     match = l.match(/^(\d+\.?\d*)\s*-\s*(\d+\.?\d*):\s*(\w+):\s*(.+?)\s*\[(.+?)\]\s*$/);
-                    if (match) {
-                        const timestamp = parseFloat(match[1]);
-                        const endTimestamp = parseFloat(match[2]);
-                        return { speaker: match[3], target: match[4].trim(), english: match[5], timestamp: timestamp, endTimestamp: endTimestamp };
-                    }
+                    if (match) return { speaker: match[3], target: match[4].trim(), english: match[5], timestamp: parseFloat(match[1]), endTimestamp: parseFloat(match[2]) };
                     
-                    // Format: 0.00 - 3.88: Text [Translation] (no speaker, from Whisper output)
+                    // 0.00 - 3.88: No Speaker
                     match = l.match(/^(\d+\.?\d*)\s*-\s*(\d+\.?\d*):\s*(.+?)\s*\[(.+?)\]\s*$/);
-                    if (match) {
-                        const timestamp = parseFloat(match[1]);
-                        const endTimestamp = parseFloat(match[2]);
-                        return { speaker: '', target: match[3].trim(), english: match[4], timestamp: timestamp, endTimestamp: endTimestamp };
-                    }
-                    
-                    // Format: 0.00 - 3.88: Text (no translation)
-                    match = l.match(/^(\d+\.?\d*)\s*-\s*(\d+\.?\d*):\s*(.+)\s*$/);
-                    if (match && !match[3].includes('[')) {
-                        const timestamp = parseFloat(match[1]);
-                        const endTimestamp = parseFloat(match[2]);
-                        return { speaker: '', target: match[3].trim(), english: '', timestamp: timestamp, endTimestamp: endTimestamp };
-                    }
-                } else {
-                    match = l.match(/^(.+?):\s*(.+?)\s*\[(.+?)\]/);
-                    if (match) {
-                        return { speaker: match[1], target: match[2], english: match[3], timestamp: null };
-                    }
+                    if (match) return { speaker: '', target: match[3].trim(), english: match[4], timestamp: parseFloat(match[1]), endTimestamp: parseFloat(match[2]) };
                 }
-                debugLog(`Failed to parse line ${i}: "${l}"`);
                 return null;
             }).filter(x => x !== null);
             
-            debugLog(`Successfully parsed ${lines.length} lines`);
             return hasTimestamps;
         }
 
         function showToast(message) {
             const toast = document.createElement('div');
-            toast.style.cssText = `
-                position: fixed;
-                bottom: 100px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: rgba(255,255,255,0.1);
-                backdrop-filter: blur(10px);
-                padding: 12px 24px;
-                border-radius: 30px;
-                color: white;
-                font-weight: 500;
-                z-index: 1000;
-                animation: fadeInUp 0.3s ease;
-            `;
+            toast.style.cssText = `position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); padding: 12px 24px; border-radius: 30px; color: white; font-weight: 500; z-index: 1000; animation: fadeInUp 0.3s ease;`;
             toast.textContent = message;
             document.body.appendChild(toast);
-            setTimeout(() => {
-                toast.style.opacity = '0';
-                toast.style.transition = 'opacity 0.3s';
-                setTimeout(() => toast.remove(), 300);
-            }, 2000);
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2000);
         }
 
         function updateProgress() {
             if (lines.length > 0) {
-                const progress = ((currentLineIndex) / lines.length) * 100;
-                progressFill.style.width = `${progress}%`;
+                progressFill.style.width = `${((currentLineIndex) / lines.length) * 100}%`;
             }
         }
 
         async function startCalibration(forceRecalibrate = false) {
-            if (!currentAudio) {
-                showToast('Please load an audio file first');
-                return;
-            }
+            if (!currentAudio) { showToast('Please load an audio file first'); return; }
             const hasTimestamps = await parseTextFile();
-            if (lines.length === 0) {
-                showToast('Could not parse text. Check format.');
-                return;
-            }
+            if (lines.length === 0) { showToast('Could not parse text'); return; }
 
             progressBar.style.display = 'block';
 
@@ -979,124 +894,34 @@
                 mode = 'playback';
                 currentLineIndex = 0;
                 document.getElementById('setup-panel').style.display = 'none';
-                localStorage.setItem('saved_lines', JSON.stringify(lines));
-                console.log('Parsed lines:', lines);
                 renderList();
                 updateProgress();
                 updateHighlightsUI();
                 return;
             }
-
-            // Calibration Mode Setup
+            // Calibration mode
             mode = 'calibration';
             currentLineIndex = 0;
-            
-            // Reset audio for calibration
             currentAudio.pause();
             currentAudio.currentTime = 0;
-            
-            // If recalibrating, clear existing endTimestamps so they don't conflict
-            if (forceRecalibrate) {
-                lines.forEach(l => delete l.endTimestamp);
-                showToast('Tap SPACE or Screen when each line STARTS');
-            }
-            
+            if (forceRecalibrate) lines.forEach(l => delete l.endTimestamp);
             renderList();
             document.getElementById('setup-panel').style.display = 'none';
             document.getElementById('calib-indicator').style.display = 'block';
-            
             currentAudio.play();
         }
 
-        function finishCalibration() {
-            if (currentAudio) {
-                currentAudio.pause();
-            }
-            mode = 'playback';
-            currentLineIndex = 0;
-            document.getElementById('calib-indicator').style.display = 'none';
-            
-            localStorage.setItem('saved_lines', JSON.stringify(lines));
-            
-            showToast('Calibration complete! 🎉');
-            document.getElementById('setup-panel').style.display = 'block';
-            // Don't show playback controls here because we go back to setup panel first
-            renderList();
-            updateProgress();
-        }
-
-        function loadSavedSession() {
-            lines = JSON.parse(localStorage.getItem('saved_lines'));
-            if(!currentAudio) {
-                showToast('Please select the audio file first');
-                return;
-            }
-            mode = 'playback';
-            currentLineIndex = 0;
-            document.getElementById('setup-panel').style.display = 'none';
-            progressBar.style.display = 'block';
-            renderList();
-            updateProgress();
-            updateHighlightsUI();
-        }
-
-        function clearData() {
-            localStorage.removeItem('saved_lines');
-            location.reload();
-        }
-
-        function handleInteraction() {
-            if (mode === 'calibration' && currentAudio) {
-                if (currentLineIndex < lines.length) {
-                    lines[currentLineIndex].timestamp = currentAudio.currentTime;
-                    currentLineIndex++;
-                    renderList();
-                    const activeEl = document.querySelector('.active');
-                    if(activeEl) activeEl.scrollIntoView({behavior: "smooth", block: "start"});
-                } 
-                
-                if (currentLineIndex >= lines.length) {
-                    finishCalibration();
-                }
-            }
-        }
-
-        let playTimeout = null;
-
         function playLine(index) {
-            if (mode !== 'playback') return;
-            
+            if (mode !== 'playback' || !currentAudio) return;
             const line = lines[index];
             if (!line) return;
-            
-            debugLog('--- playLine called for index:', index, '---');
 
-            // 1. Stop current playback
-            if (currentAudio) {
-                currentAudio.pause();
-            } else {
-                showToast('No audio loaded');
-                return;
-            }
-
-            // 2. Calculate End Time
-            let endTime;
-            if (line.endTimestamp) {
-                endTime = line.endTimestamp;
-            } else if (index + 1 < lines.length) {
-                endTime = lines[index + 1].timestamp;
-            } else {
-                endTime = line.timestamp + 10;
-            }
+            let endTime = line.endTimestamp || (lines[index+1] ? lines[index+1].timestamp : line.timestamp + 10);
             
-            // 3. Update State
             playbackState.endTime = endTime - 0.05;
             playbackState.activeLineIndex = index;
             playbackState.isPlaying = true;
 
-            debugLog(`Playback: ${line.timestamp} -> ${playbackState.endTime}`);
-
-            // 4. Visual Updates
             document.querySelectorAll('.line-item').forEach((el, i) => {
                 el.classList.remove('active');
                 if (i < index) el.classList.add('done');
@@ -1105,409 +930,156 @@
             if (lineItems[index]) {
                 lineItems[index].classList.add('active');
                 lineItems[index].classList.remove('done');
-                // Scroll to top of viewport with padding
                 lineItems[index].scrollIntoView({behavior: "smooth", block: "start"});
             }
             const targetEl = document.getElementById(`target-${index}`);
             if(targetEl) targetEl.classList.remove('hidden-text');
 
-            // 5. Seek and play
             if (audioReady) {
                 currentAudio.currentTime = line.timestamp;
-                currentAudio.play().catch(e => console.error("Play failed:", e));
+                currentAudio.play();
             } else {
-                // Wait for audio to be ready
-                debugLog('Audio not ready, waiting for loadedmetadata...');
-                const onReady = () => {
+                currentAudio.addEventListener('loadedmetadata', function onReady() {
                     currentAudio.removeEventListener('loadedmetadata', onReady);
                     audioReady = true;
                     currentAudio.currentTime = line.timestamp;
-                    currentAudio.play().catch(e => console.error("Play failed:", e));
-                };
-                currentAudio.addEventListener('loadedmetadata', onReady);
+                    currentAudio.play();
+                });
             }
         }
 
         function renderList() {
             if (lines.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📚</div>
-                        <h3>Ready to Learn</h3>
-                        <p>Add your audio and dialogue text above to begin</p>
-                    </div>
-                `;
+                container.innerHTML = `<div class="empty-state"><h3>Ready to Learn</h3></div>`;
                 return;
             }
-
-            // Detect unique speakers for color assignment
             const speakers = [...new Set(lines.map(l => l.speaker).filter(s => s))];
             const speakerColors = {};
-            speakers.forEach((s, i) => {
-                speakerColors[s] = i % 2 === 0 ? 'a' : 'b';
-            });
+            speakers.forEach((s, i) => speakerColors[s] = i % 2 === 0 ? 'a' : 'b');
 
             container.innerHTML = '';
             lines.forEach((line, index) => {
                 const div = document.createElement('div');
-                div.className = `line-item ${index === currentLineIndex ? 'active' : ''} ${index < currentLineIndex ? 'done' : ''}`;
+                div.className = `line-item ${index === currentLineIndex ? 'active' : ''}`;
                 
                 let targetClass = '';
-                if (mode === 'playback' && index >= currentLineIndex) {
-                    targetClass = 'hidden-text';
-                }
+                if (mode === 'playback' && index >= currentLineIndex) targetClass = 'hidden-text';
 
-                // Use speaker-based colors, or alternate if no speaker
                 const colorKey = line.speaker ? speakerColors[line.speaker] : (index % 2 === 0 ? 'a' : 'b');
                 const speakerClass = colorKey === 'a' ? 'speaker-a' : 'speaker-b';
                 const speakerEmoji = colorKey === 'a' ? '🔵' : '🟢';
-                const speakerLabel = line.speaker ? ` ${line.speaker}` : '';
 
                 div.innerHTML = `
-                    <div class="speaker ${speakerClass}">${speakerEmoji}${speakerLabel}</div>
+                    <div class="speaker ${speakerClass}">${speakerEmoji} ${line.speaker || ''}</div>
                     <div class="english">${line.english}</div>
                     <div class="target ${targetClass}" id="target-${index}" data-translation="${encodeURIComponent(line.english)}">${line.target}</div>
                 `;
 
                 if (mode === 'playback') {
                     div.onclick = (e) => {
-                        // Don't trigger playback if selecting text
-                        const selection = window.getSelection();
-                        if (selection && selection.toString().trim()) return;
-                        
+                        if (window.getSelection().toString().trim()) return;
                         currentLineIndex = index + 1;
                         updateProgress();
                         playLine(index);
                     };
                 }
-                
                 container.appendChild(div);
             });
-
-            const active = document.querySelector('.active');
-            if(active) active.scrollIntoView({behavior: "smooth", block: "start"});
         }
         
-        // Handle text selection for highlighting
-        function handleTextSelection() {
+        // Highlight Selection
+        document.addEventListener('mouseup', () => {
             if (mode !== 'playback') return;
-            
             const selection = window.getSelection();
-            const selectedText = selection.toString().trim();
-            
-            if (!selectedText) return;
-            
-            // Check if selection is within a .target element
-            const anchorNode = selection.anchorNode;
-            if (!anchorNode) return;
-            
-            const targetEl = anchorNode.parentElement?.closest('.target') || 
-                            (anchorNode.nodeType === 1 ? anchorNode.closest('.target') : null);
+            const text = selection.toString().trim();
+            if (!text) return;
+            const anchor = selection.anchorNode;
+            const targetEl = anchor.parentElement?.closest('.target') || (anchor.nodeType===1?anchor.closest('.target'):null);
             
             if (targetEl && !targetEl.classList.contains('hidden-text')) {
-                // Get the translation from the data attribute
-                const translation = decodeURIComponent(targetEl.dataset.translation || '');
-                addHighlight(selectedText, translation);
-                // Clear selection
+                addHighlight(text, decodeURIComponent(targetEl.dataset.translation));
                 selection.removeAllRanges();
             }
-        }
-        
-        // Listen for text selection
-        document.addEventListener('mouseup', handleTextSelection);
-        document.addEventListener('touchend', () => {
-            // Small delay for touch selection to complete
-            setTimeout(handleTextSelection, 150);
         });
 
-        // Keyboard controls
-        document.body.onkeyup = function(e) {
-            if (e.code === 'Space' || e.code === 'ArrowDown') {
-                e.preventDefault();
-                if (mode === 'calibration') {
-                    handleInteraction();
-                } else if (mode === 'playback' && currentLineIndex < lines.length) {
-                    const indexToPlay = currentLineIndex;
-                    currentLineIndex++;
-                    updateProgress();
-                    playLine(indexToPlay);
-                }
-            } else if (e.code === 'ArrowUp') {
-                e.preventDefault();
-                if (mode === 'playback' && currentLineIndex > 0) {
-                    currentLineIndex--;
-                    updateProgress();
-                    playLine(currentLineIndex);
-                }
-            } else if (e.code === 'KeyR') {
-                // Replay current line
-                replayCurrentLine();
-            }
-        }
-        
-        document.body.onkeydown = function(e) {
-            if ((e.code === 'Space' || e.code === 'ArrowDown' || e.code === 'ArrowUp') && mode !== 'setup') {
-                e.preventDefault();
-            }
-        }
-        
-        // Touch controls for calibration
-        document.getElementById('calib-indicator').onclick = handleInteraction;
+        // ----------------------------------------------------
+        //  NEW MONGODB BACKEND LOGIC
+        // ----------------------------------------------------
 
-        // ============================================
-        // HIGHLIGHTS FUNCTIONALITY
-        // ============================================
-        
-        // Update highlights UI
-        function updateHighlightsUI() {
-            const sidebar = document.getElementById('highlights-sidebar');
-            const count = document.getElementById('highlights-count');
-            const list = document.getElementById('highlights-list');
-            const appContainer = document.querySelector('.app-container');
-            const footer = document.querySelector('.highlights-sidebar-footer');
-            
-            // Show sidebar in playback mode
-            if (mode === 'playback') {
-                sidebar.classList.add('show');
-                appContainer.classList.add('has-sidebar');
-            } else {
-                sidebar.classList.remove('show');
-                appContainer.classList.remove('has-sidebar');
-            }
-            
-            count.textContent = highlights.length;
-            
-            if (highlights.length === 0) {
-                list.innerHTML = '<div class="highlights-sidebar-empty">Select Russian text to add highlights</div>';
-            } else {
-                list.innerHTML = highlights.map((h, i) => `
-                    <div class="highlights-sidebar-item">
-                        <button class="highlights-sidebar-remove" onclick="removeHighlight(${i})">✕</button>
-                        <div class="highlights-sidebar-russian">${h.russian}</div>
-                        <div class="highlights-sidebar-translation">${h.translation || ''}</div>
-                    </div>
-                `).join('');
-            }
-            
-            // Update footer with Save to Drive button
-            if (footer) {
-                footer.innerHTML = `
-                    <button class="danger" onclick="clearAllHighlights()" style="flex: 0 0 auto; min-width: 50px;">
-                        🗑
-                    </button>
-                    <button class="primary" onclick="saveHighlightsToDrive()" id="save-drive-btn" style="flex: 1;">
-                        💾 Save
-                    </button>
-                    <button class="secondary" onclick="sendHighlightsEmail()" style="flex: 0 0 auto; min-width: 50px;">
-                        📧
-                    </button>
-                `;
-            }
-        }
-        
-        function addHighlight(russian, translation = '') {
-            const trimmedRussian = russian.trim();
-            if (!trimmedRussian) return false;
-            
-            // Avoid duplicates
-            if (highlights.some(h => h.russian === trimmedRussian)) {
-                showToast('Already in highlights');
-                return false;
-            }
-            
-            highlights.push({
-                russian: trimmedRussian,
-                translation: translation.trim(),
-                timestamp: new Date().toISOString()
-            });
-            
-            // Note: Highlights are saved in memory, click "Save" to sync to Drive
-            updateHighlightsUI();
-            showToast('✓ Added! Click 💾 to save');
-            return true;
-        }
-        
-        function removeHighlight(index) {
-            highlights.splice(index, 1);
-            updateHighlightsUI();
-        }
-        
-        function clearAllHighlights() {
-            if (confirm('Clear all highlights?')) {
-                highlights = [];
-                updateHighlightsUI();
-                renderList(); // Update the + buttons
-                showToast('Cleared! Click 💾 to save');
-            }
-        }
-        
-        function sendHighlightsEmail() {
-            if (highlights.length === 0) {
-                showToast('No highlights to send');
-                return;
-            }
-            
-            const subject = encodeURIComponent('Russian Highlights - ' + new Date().toLocaleDateString());
-            const body = encodeURIComponent(
-                'Minhas frases em Russo:\n\n' +
-                highlights.map((h, i) => 
-                    `${i + 1}. ${h.russian}\n   → ${h.translation || '(sem tradução)'}`
-                ).join('\n\n') +
-                '\n\n---\nEnviado pelo Dialogue Player'
-            );
-            
-            window.open(`mailto:${HIGHLIGHTS_EMAIL}?subject=${subject}&body=${body}`, '_blank');
-            showToast('Opening email...');
-        }
-
-        // Add CSS animation for toast
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes fadeInUp {
-                from {
-                    opacity: 0;
-                    transform: translateX(-50%) translateY(20px);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateX(-50%) translateY(0);
-                }
-            }
-        `;
-        document.head.appendChild(style);
-
-        // ============================================
-        // BACKEND API INTEGRATION
-        // ============================================
-        
-        // REPLACE THIS LINE WITH YOUR REAL URL:
-        const BACKEND_URL = 'https://dialogue-backend.onrender.com';
-
-        // 1. Load the list of dialogues when page opens
+        // 1. Load List
         async function loadDialogueList() {
             const select = document.getElementById('dialogue-select');
             const btn = document.getElementById('drive-connect-btn');
             
-            // Show loading state
-            if(btn) {
-                btn.innerHTML = '<span>⏳</span> Waking up server...';
-                btn.disabled = true;
-            }
-            
-            select.innerHTML = '<option>Connecting...</option>';
+            if(btn) { btn.innerHTML = '<span>⏳</span> Connecting...'; btn.disabled = true; }
+            select.innerHTML = '<option>Loading...</option>';
 
             try {
-                console.log('Fetching from:', `${BACKEND_URL}/api/dialogues`); // Debug log
                 const res = await fetch(`${BACKEND_URL}/api/dialogues`);
-                
-                if (!res.ok) throw new Error(`Server returned ${res.status}`);
-                
+                if (!res.ok) throw new Error('Server Error');
                 const dialogues = await res.json();
                 
-                // Success! Populate dropdown
                 select.innerHTML = '<option value="">Select dialogue...</option>';
                 dialogues.forEach(d => {
                     const option = document.createElement('option');
+                    // We store the ID details in the value
                     option.value = JSON.stringify(d); 
-                    option.textContent = d.label + (d.highlightsId ? ' ★' : '');
+                    option.textContent = d.label + (d.hasHighlights ? ' ★' : '');
                     select.appendChild(option);
                 });
 
-                // Hide the button, show the dropdown
                 document.getElementById('drive-status').style.display = 'none';
                 document.getElementById('drive-files').style.display = 'block';
-                showToast('Connected to Server!');
-
+                showToast('Connected!');
             } catch (err) {
                 console.error(err);
-                // If it fails, let the user try again
                 if(btn) {
-                    btn.innerHTML = '<span>↻</span> Server Sleeping - Tap to Retry';
+                    btn.innerHTML = '<span>↻</span> Retry';
                     btn.onclick = loadDialogueList;
                     btn.disabled = false;
                 }
-                select.innerHTML = '<option>Connection Failed</option>';
-                showToast('Server is sleeping (Free Plan). Click Retry in 30s.');
+                select.innerHTML = '<option>Failed</option>';
             }
         }
 
-        // 2. Load a specific dialogue when selected (auto-starts session)
+        // 2. Load Dialogue (Mongo Text + Drive Audio)
         async function loadFromDrive() {
             const select = document.getElementById('dialogue-select');
             if (!select.value) return;
-
-            let data;
-            try {
-                data = JSON.parse(select.value); // { label, audioId, transcriptId, number, highlightsId }
-            } catch (e) {
-                return; // Invalid selection
-            }
             
-            currentDialogueNumber = data.number;
-            showToast(`Loading ${data.label}...`);
-
             try {
-                // A. Fetch Transcript Text
-                const textRes = await fetch(`${BACKEND_URL}/api/file/${data.transcriptId}`);
-                if (!textRes.ok) throw new Error('Failed to fetch transcript');
-                const text = await textRes.text();
-                document.getElementById('dialogueText').value = text;
+                const data = JSON.parse(select.value); // { number, audioId, hasTranscript ... }
+                currentDialogueNumber = data.number;
+                showToast(`Loading ${data.label}...`);
 
-                // B. Fetch Highlights from Drive (if exists)
-                if (data.highlightsId) {
-                    try {
-                        const hlRes = await fetch(`${BACKEND_URL}/api/file/${data.highlightsId}`);
-                        if (hlRes.ok) {
-                            const hlText = await hlRes.text();
-                            // Parse TXT format: "russian | translation" per line
-                            highlights = hlText.split('\n')
-                                .filter(line => line.trim())
-                                .map(line => {
-                                    const parts = line.split(' | ');
-                                    return {
-                                        russian: parts[0] || '',
-                                        translation: parts[1] || '',
-                                        timestamp: new Date().toISOString()
-                                    };
-                                });
-                            console.log('Loaded highlights from Drive:', highlights.length);
-                        }
-                    } catch (e) {
-                        console.warn('Could not load highlights file', e);
-                        highlights = [];
-                    }
-                } else {
-                    highlights = []; // Reset if no file exists
-                }
-
-                // C. Download audio as blob (required for seeking to work)
-                showToast('Downloading audio...');
-                const audioUrl = `${BACKEND_URL}/api/file/${data.audioId}`;
-                const audioRes = await fetch(audioUrl);
-                if (!audioRes.ok) throw new Error('Failed to fetch audio');
-                const audioBlob = await audioRes.blob();
-                const audioBlobUrl = URL.createObjectURL(audioBlob);
+                // A. GET DATA FROM MONGODB (Text + Highlights)
+                const metaRes = await fetch(`${BACKEND_URL}/api/dialogues/${data.number}`);
+                const meta = await metaRes.json();
                 
-                // Set up the player with blob URL (allows seeking)
+                // Set text
+                if (meta.transcript) {
+                    document.getElementById('dialogueText').value = meta.transcript;
+                }
+                
+                // Set highlights
+                highlights = meta.highlights || [];
+                updateHighlightsUI();
+
+                // B. GET AUDIO STREAM FROM DRIVE
+                const audioUrl = `${BACKEND_URL}/api/audio/${data.audioId}`;
                 if (currentAudio) currentAudio.pause();
-                currentAudio = new Audio(audioBlobUrl);
+                currentAudio = new Audio(audioUrl);
                 currentAudio.preload = 'auto';
                 audioReady = false;
                 
                 currentAudio.addEventListener('loadedmetadata', () => {
                     audioReady = true;
-                    debugLog('Audio ready. Duration:', currentAudio.duration);
                 });
                 
-                // Force load
-                currentAudio.load();
-                
-                // UI Updates
                 document.getElementById('file-name').textContent = data.label;
-                document.getElementById('file-info').textContent = "Audio downloaded ✓";
                 document.getElementById('file-display').classList.add('has-file');
 
-                // AUTO-START: Parse and enter playback mode immediately
+                // Auto-Start if text exists
                 const hasTimestamps = await parseTextFile();
                 if (lines.length > 0) {
                     mode = 'playback';
@@ -1516,63 +1088,93 @@
                     progressBar.style.display = 'block';
                     renderList();
                     updateProgress();
-                    updateHighlightsUI();
-                    showToast('Ready! Tap a card to play.');
-                } else {
-                    showToast('Loaded! Press Start.');
+                    showToast('Ready! Tap to play.');
                 }
 
             } catch (err) {
                 console.error(err);
-                showToast('Error loading files: ' + err.message);
+                showToast('Error loading: ' + err.message);
             }
         }
 
-        // 3. Save Highlights to Drive (as TXT file)
+        // 3. Save Highlights (to MongoDB)
         async function saveHighlightsToDrive() {
-            if (!currentDialogueNumber) {
-                showToast('No dialogue selected');
-                return;
-            }
-            
+            if (!currentDialogueNumber) return;
             const btn = document.getElementById('save-drive-btn');
-            if (!btn) return;
-            
             const originalText = btn.innerHTML;
             btn.innerHTML = '⏳ Saving...';
             btn.disabled = true;
 
             try {
-                // Convert highlights to TXT format: "russian | translation" per line
-                const txtContent = highlights
-                    .map(h => `${h.russian} | ${h.translation || ''}`)
-                    .join('\n');
-
                 const res = await fetch(`${BACKEND_URL}/api/dialogues/${currentDialogueNumber}/highlights`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: txtContent
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(highlights)
                 });
-
                 if (!res.ok) throw new Error('Save failed');
-                
-                showToast('Highlights saved to Drive! 💾');
-                
-                // Refresh list so the "Has Highlights" label appears
-                loadDialogueList();
-
+                showToast('Saved to Database! 💾');
+                loadDialogueList(); // Refresh stars
             } catch (err) {
-                console.error(err);
-                showToast('Error saving: ' + err.message);
+                showToast('Error: ' + err.message);
             } finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
             }
         }
 
-        // Initialize on page load
+        // UI Helpers
+        function updateHighlightsUI() {
+            const list = document.getElementById('highlights-list');
+            const count = document.getElementById('highlights-count');
+            const footer = document.querySelector('.highlights-sidebar-footer');
+            const sidebar = document.getElementById('highlights-sidebar');
+            const app = document.querySelector('.app-container');
+
+            if (mode === 'playback') {
+                sidebar.classList.add('show');
+                app.classList.add('has-sidebar');
+            }
+            
+            count.textContent = highlights.length;
+            list.innerHTML = highlights.length ? highlights.map((h, i) => `
+                <div class="highlights-sidebar-item">
+                    <button class="highlights-sidebar-remove" onclick="removeHighlight(${i})">✕</button>
+                    <div class="highlights-sidebar-russian">${h.russian}</div>
+                    <div class="highlights-sidebar-translation">${h.translation}</div>
+                </div>`).join('') : '<div class="highlights-sidebar-empty">Select text to highlight</div>';
+                
+            if (footer) {
+                footer.innerHTML = `
+                    <button class="danger" onclick="clearAllHighlights()" style="min-width:40px">🗑</button>
+                    <button class="primary" onclick="saveHighlightsToDrive()" id="save-drive-btn" style="flex:1">💾 Save</button>
+                    <button class="secondary" onclick="sendHighlightsEmail()" style="min-width:40px">📧</button>
+                `;
+            }
+        }
+
+        function addHighlight(russian, translation) {
+            if (highlights.some(h => h.russian === russian)) return;
+            highlights.push({ russian, translation });
+            updateHighlightsUI();
+            showToast('✓ Added');
+        }
+        function removeHighlight(i) { highlights.splice(i, 1); updateHighlightsUI(); }
+        function clearAllHighlights() { if(confirm('Clear?')) { highlights=[]; updateHighlightsUI(); } }
+        function sendHighlightsEmail() {
+             window.open(`mailto:${HIGHLIGHTS_EMAIL}?subject=Highlights&body=${encodeURIComponent(JSON.stringify(highlights,null,2))}`);
+        }
+
+        // Add Key Listener
+        document.body.onkeyup = (e) => {
+            if (e.code==='Space') { e.preventDefault(); if (mode==='playback') playLine(currentLineIndex++); }
+        };
+
         window.addEventListener('DOMContentLoaded', loadDialogueList);
+        
+        // CSS for Toast
+        const s = document.createElement('style');
+        s.textContent = `@keyframes fadeInUp { from { opacity:0; transform:translate(-50%,20px); } to { opacity:1; transform:translate(-50%,0); } }`;
+        document.head.appendChild(s);
     </script>
 </body>
 </html>
-``` 
