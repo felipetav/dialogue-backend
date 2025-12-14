@@ -1,1 +1,1455 @@
-aaa
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0a0f">
+    <title>Dialogue Player</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.4);
+            --accent: #22d3ee;
+            --accent-glow: rgba(34, 211, 238, 0.3);
+            --success: #10b981;
+            --danger: #f43f5e;
+            --bg-dark: #0a0a0f;
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-hover: rgba(255, 255, 255, 0.06);
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: rgba(248, 250, 252, 0.6);
+            --text-muted: rgba(248, 250, 252, 0.4);
+            --safe-top: env(safe-area-inset-top, 20px);
+            --safe-bottom: env(safe-area-inset-bottom, 20px);
+            --safe-left: env(safe-area-inset-left, 20px);
+            --safe-right: env(safe-area-inset-right, 20px);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+        }
+
+        /* Animated gradient background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(ellipse 80% 50% at 20% -20%, rgba(99, 102, 241, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(34, 211, 238, 0.1), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .app-container {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: -webkit-fill-available;
+            padding-top: var(--safe-top);
+            padding-bottom: var(--safe-bottom);
+            padding-left: var(--safe-left);
+            padding-right: var(--safe-right);
+        }
+
+        /* Header */
+        .header {
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Setup Panel */
+        .controls {
+            margin: 0 16px 16px;
+            padding: 24px;
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        /* Custom File Input */
+        .file-input-wrapper {
+            position: relative;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-display {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 18px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px dashed var(--border);
+            border-radius: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .file-input-wrapper:hover .file-input-display,
+        .file-input-display.has-file {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .file-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--primary), #818cf8);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .file-text {
+            flex: 1;
+        }
+
+        .file-text-main {
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .file-text-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* Textarea */
+        textarea {
+            width: 100%;
+            min-height: 140px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            color: var(--text-primary);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            resize: vertical;
+            transition: all 0.3s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* Buttons */
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            flex: 1;
+            min-width: 100px;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 14px;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button.primary {
+            background: linear-gradient(135deg, var(--primary), #818cf8);
+            color: white;
+            box-shadow: 0 4px 20px var(--primary-glow);
+        }
+
+        button.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px var(--primary-glow);
+        }
+
+        button.primary:active {
+            transform: translateY(0);
+        }
+
+        button.secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        button.secondary:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--primary);
+        }
+
+        button.danger {
+            background: rgba(244, 63, 94, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(244, 63, 94, 0.2);
+        }
+
+        button.danger:hover {
+            background: rgba(244, 63, 94, 0.15);
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* Scroll Container */
+        #scroll-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 60px 16px 100px;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+            overscroll-behavior: contain;
+            touch-action: pan-y;
+        }
+
+        #scroll-container::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        #scroll-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #scroll-container::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        /* Line Items */
+        .line-item {
+            padding: 20px;
+            margin-bottom: 12px;
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .line-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(to bottom, var(--primary), var(--accent));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .line-item:hover {
+            background: var(--bg-card-hover);
+            transform: translateX(4px);
+        }
+
+        .line-item:active {
+            transform: scale(0.98);
+        }
+
+        .line-item.active {
+            background: rgba(99, 102, 241, 0.08);
+            border-color: rgba(99, 102, 241, 0.3);
+            transform: scale(1.02);
+            box-shadow: 0 8px 40px rgba(99, 102, 241, 0.15);
+        }
+
+        .line-item.active::before {
+            opacity: 1;
+        }
+
+        .line-item.done {
+            opacity: 0.5;
+        }
+
+        .line-item.done:hover {
+            opacity: 0.7;
+        }
+
+        .speaker {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .speaker.speaker-a {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.1));
+            color: #818cf8;
+        }
+
+        .speaker.speaker-b {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1));
+            color: #34d399;
+        }
+
+        .english {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+
+        .target {
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            line-height: 1.5;
+            transition: all 0.3s ease;
+        }
+
+        .hidden-text {
+            visibility: hidden;
+        }
+
+        /* Highlight styles - Text selection like Kindle */
+        .target {
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        .target::selection {
+            background: rgba(255, 213, 79, 0.5);
+        }
+
+        .target::-moz-selection {
+            background: rgba(255, 213, 79, 0.5);
+        }
+
+        /* Fixed highlights sidebar on the right */
+        .highlights-sidebar {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            width: 320px;
+            max-height: calc(100vh - 120px);
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            display: none;
+            flex-direction: column;
+            z-index: 50;
+            overflow: hidden;
+        }
+
+        .highlights-sidebar.show {
+            display: flex;
+        }
+
+        .highlights-sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .highlights-sidebar-header h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .highlights-sidebar-header .count {
+            background: var(--primary);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+        }
+
+        .highlights-sidebar-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .highlights-sidebar-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            position: relative;
+        }
+
+        .highlights-sidebar-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .highlights-sidebar-russian {
+            font-size: 0.95rem;
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+
+        .highlights-sidebar-translation {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.3;
+        }
+
+        .highlights-sidebar-remove {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+
+        .highlights-sidebar-remove:hover {
+            opacity: 1;
+            color: var(--danger);
+        }
+
+        .highlights-sidebar-footer {
+            padding: 12px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .highlights-sidebar-footer button {
+            padding: 10px 12px;
+            font-size: 0.8rem;
+        }
+
+        .highlights-sidebar-empty {
+            text-align: center;
+            padding: 30px 20px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        /* Adjust main content when sidebar is visible - desktop only */
+        @media (min-width: 900px) {
+            .app-container.has-sidebar #scroll-container {
+                padding-right: 360px;
+            }
+        }
+
+        /* Hide sidebar on small screens, show floating button instead */
+        @media (max-width: 899px) {
+            .highlights-sidebar {
+                display: none !important;
+            }
+        }
+
+        /* Calibration Overlay */
+        .calibration-overlay {
+            position: fixed;
+            bottom: calc(30px + var(--safe-bottom));
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            padding: 16px 32px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: none;
+            box-shadow: 0 8px 40px var(--primary-glow);
+            z-index: 100;
+            animation: pulse 2s infinite;
+            cursor: pointer;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 8px 40px var(--primary-glow); }
+            50% { box-shadow: 0 8px 60px var(--primary-glow), 0 0 0 10px rgba(99, 102, 241, 0.1); }
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .empty-state-icon {
+            width: 80px;
+            height: 80px;
+            background: var(--bg-card);
+            border-radius: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+
+        .empty-state h3 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Progress indicator */
+        .progress-bar {
+            position: fixed;
+            top: var(--safe-top);
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--border);
+            z-index: 50;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            transition: width 0.3s ease;
+            border-radius: 0 2px 2px 0;
+        }
+
+        /* Responsive */
+        @media (min-width: 768px) {
+            .controls {
+                max-width: 600px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            #lines-list {
+                max-width: 700px;
+                margin: 0 auto;
+            }
+
+            .line-item {
+                padding: 24px;
+            }
+
+            .target {
+                font-size: 1.4rem;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .header {
+                padding: 20px 40px;
+            }
+
+            #scroll-container {
+                padding: 60px 40px 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="progress-bar" id="progress-bar" style="display: none;">
+            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            <div id="time-display" style="position: absolute; right: 10px; top: 5px; font-family: monospace; font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; pointer-events: none;">0.000s</div>
+        </div>
+
+        <header class="header">
+            <div class="header-icon">🎧</div>
+            <h1>Dialogue Player</h1>
+        </header>
+
+        <div class="controls" id="setup-panel">
+            <!-- Google Drive Connection -->
+            <div class="control-group" id="drive-section">
+                <label>Google Drive</label>
+                <div id="drive-status" style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <button class="primary" id="drive-connect-btn" onclick="handleAuthClick()" style="flex: 1;">
+                        <span>☁️</span> Connect to Google Drive
+                    </button>
+                </div>
+                <div id="drive-files" style="display: none;">
+                    <select id="dialogue-select" onchange="loadFromDrive()" style="width: 100%; padding: 16px; border-radius: 14px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: white; font-size: 1.1rem; font-weight: 500; cursor: pointer;">
+                        <option value="">Select dialogue...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="control-group" style="text-align: center; color: var(--text-muted); font-size: 0.8rem;">
+                — or load local files —
+            </div>
+
+            <div class="control-group">
+                <label>Audio File</label>
+                <div class="file-input-wrapper">
+                    <input type="file" id="audioFile" accept="audio/webm,audio/mp3,audio/wav,audio/mpeg,.mp3,.wav,.webm">
+                    <div class="file-input-display" id="file-display">
+                        <div class="file-icon">🎵</div>
+                        <div class="file-text">
+                            <div class="file-text-main" id="file-name">Choose audio file</div>
+                            <div class="file-text-sub" id="file-info">MP3, WAV, WebM supported</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Dialogue Text</label>
+                <textarea id="dialogueText" placeholder="Supported formats:&#10;&#10;0.00 - 3.88: Привет [Oi]&#10;3.88 - 5.76: Как дела? [Como vai?]&#10;&#10;Or: Speaker: Text [Translation]"></textarea>
+            </div>
+
+            <div class="button-group">
+                <button class="primary" onclick="startCalibration()">
+                    <span>▶</span> Start
+                </button>
+                <button class="secondary" onclick="startCalibration(true)">
+                    <span>⏱</span> Re-sync
+                </button>
+                <button class="secondary" onclick="loadSavedSession()" id="loadBtn" disabled>
+                    <span>↻</span> Resume
+                </button>
+                <button class="danger" onclick="clearData()">
+                    <span>✕</span> Clear
+                </button>
+            </div>
+        </div>
+
+        <div id="scroll-container">
+            <div id="lines-list">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📚</div>
+                    <h3>Ready to Learn</h3>
+                    <p>Add your audio and dialogue text above to begin</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="calib-indicator" class="calibration-overlay">
+            ✨ Tap for next line
+        </div>
+
+        <!-- Highlights Sidebar (fixed on right) -->
+        <div class="highlights-sidebar" id="highlights-sidebar">
+            <div class="highlights-sidebar-header">
+                <h3>📝 Highlights <span class="count" id="highlights-count">0</span></h3>
+            </div>
+            <div class="highlights-sidebar-list" id="highlights-list">
+                <div class="highlights-sidebar-empty">Select Russian text to add</div>
+            </div>
+            <div class="highlights-sidebar-footer">
+                <button class="danger" onclick="clearAllHighlights()">
+                    🗑 Clear
+                </button>
+                <button class="primary" onclick="sendHighlightsEmail()">
+                    📧 Email
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentAudio = null; // Will be created fresh for each segment
+        let lines = []; 
+        let currentLineIndex = 0;
+        let mode = 'setup';
+        let audioReady = false; // Track if audio is ready to seek
+        
+        // Highlights storage - declare early so it's available in renderList
+        const HIGHLIGHTS_EMAIL = 'nasrundin@gmail.com';
+        let highlights = JSON.parse(localStorage.getItem('dialogue_highlights') || '[]');
+
+        function replayCurrentLine() {
+            const idx = playbackState.activeLineIndex;
+            if (idx !== -1) {
+                playLine(idx);
+            }
+        }
+
+        function debugLog(msg, ...args) {
+            console.log(`[DEBUG ${new Date().toISOString().split('T')[1].slice(0, -1)}] ${msg}`, ...args);
+        }
+
+        // Global Playback State
+        const playbackState = {
+            isPlaying: false,
+            endTime: 0,
+            activeLineIndex: -1
+        };
+
+        // High-precision loop
+        function playbackLoop() {
+            // Always update time display if audio is loaded
+            if (currentAudio && currentAudio.duration) {
+                const timeDisplay = document.getElementById('time-display');
+                if (timeDisplay) {
+                    timeDisplay.textContent = `${currentAudio.currentTime.toFixed(3)}s / ${currentAudio.duration.toFixed(3)}s`;
+                }
+            }
+
+            if (playbackState.isPlaying && currentAudio) {
+                if (currentAudio.paused) {
+                    // This can happen if the user manually paused, or if the browser stopped it.
+                    // debugLog('Loop: isPlaying=true but audio.paused=true'); 
+                } else {
+                    // Check if we reached the end
+                    if (currentAudio.currentTime >= playbackState.endTime) {
+                        debugLog('End time reached. Current:', currentAudio.currentTime.toFixed(3), 'Target:', playbackState.endTime.toFixed(3));
+                        currentAudio.pause();
+                        playbackState.isPlaying = false;
+                        
+                        // Visual update
+                        const activeEl = document.querySelector('.line-item.active');
+                        if (activeEl) activeEl.classList.add('done');
+                    }
+                }
+            }
+            requestAnimationFrame(playbackLoop);
+        }
+        // Start the loop immediately
+        requestAnimationFrame(playbackLoop);
+
+        const container = document.getElementById('lines-list');
+        const scrollContainer = document.getElementById('scroll-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressFill = document.getElementById('progress-fill');
+
+        // Check for saved data on load
+        if(localStorage.getItem('saved_lines')) {
+            document.getElementById('loadBtn').disabled = false;
+        }
+
+        // File input handling with visual feedback (for local files)
+        document.getElementById('audioFile').addEventListener('change', function(e){
+            if (e.target.files[0]) {
+                const fileUrl = URL.createObjectURL(e.target.files[0]);
+                
+                // Set up audio
+                if (currentAudio) currentAudio.pause();
+                currentAudio = new Audio(fileUrl);
+                currentAudio.preload = 'auto';
+                audioReady = false;
+                
+                currentAudio.addEventListener('loadedmetadata', () => {
+                    audioReady = true;
+                    debugLog('Local audio ready. Duration:', currentAudio.duration);
+                });
+                
+                const fileName = e.target.files[0].name;
+                const fileSize = (e.target.files[0].size / (1024 * 1024)).toFixed(1);
+                document.getElementById('file-name').textContent = fileName;
+                document.getElementById('file-info').textContent = `${fileSize} MB`;
+                document.getElementById('file-display').classList.add('has-file');
+            }
+        });
+
+        async function parseTextFile() {
+            const text = document.getElementById('dialogueText').value;
+            if (!text.trim()) {
+                showToast('Please paste dialogue text');
+                return false;
+            }
+            
+            const rawLines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+            debugLog(`Found ${rawLines.length} raw lines`);
+            
+            // Check for various timestamp formats
+            const hasTimestamps = rawLines.some(l => 
+                /^\d{2}:\d{2}[–-]\d{2}:\d{2}/.test(l.trim()) ||           // 00:00–00:07
+                /^\[\d+:\d{2}\s*-\s*\d+:\d{2}\]/.test(l.trim()) ||        // [5:09 - 5:13]
+                /^\d+\.\d+\s*-\s*\d+\.\d+:/.test(l.trim())                // 0.00 - 3.88:
+            );
+            
+            lines = rawLines.map((l, i) => {
+                let match;
+                if (hasTimestamps) {
+                    // Format: 00:00–00:07 Speaker: Target [Translation]
+                    match = l.match(/^(\d{2}):(\d{2})[–-]\d{2}:\d{2}\s+(.+?):\s*(.+?)\s*\[(.+?)\]/);
+                    if (match) {
+                        const timestamp = parseInt(match[1]) * 60 + parseInt(match[2]);
+                        return { speaker: match[3], target: match[4], english: match[5], timestamp: timestamp };
+                    }
+                    
+                    // Format: [5:09 - 5:13] Speaker: Target [Translation]
+                    match = l.match(/^\[(\d+):(\d{2})\s*-\s*\d+:\d{2}\]\s*(.+?):\s*(.+?)\s*\[(.+?)\]/);
+                    if (match) {
+                        const timestamp = parseInt(match[1]) * 60 + parseInt(match[2]);
+                        return { speaker: match[3], target: match[4], english: match[5], timestamp: timestamp };
+                    }
+                    
+                    // Format: 0.00 - 3.88: Speaker: Text [Translation] (with speaker name)
+                    match = l.match(/^(\d+\.?\d*)\s*-\s*(\d+\.?\d*):\s*(\w+):\s*(.+?)\s*\[(.+?)\]\s*$/);
+                    if (match) {
+                        const timestamp = parseFloat(match[1]);
+                        const endTimestamp = parseFloat(match[2]);
+                        return { speaker: match[3], target: match[4].trim(), english: match[5], timestamp: timestamp, endTimestamp: endTimestamp };
+                    }
+                    
+                    // Format: 0.00 - 3.88: Text [Translation] (no speaker, from Whisper output)
+                    match = l.match(/^(\d+\.?\d*)\s*-\s*(\d+\.?\d*):\s*(.+?)\s*\[(.+?)\]\s*$/);
+                    if (match) {
+                        const timestamp = parseFloat(match[1]);
+                        const endTimestamp = parseFloat(match[2]);
+                        return { speaker: '', target: match[3].trim(), english: match[4], timestamp: timestamp, endTimestamp: endTimestamp };
+                    }
+                    
+                    // Format: 0.00 - 3.88: Text (no translation)
+                    match = l.match(/^(\d+\.?\d*)\s*-\s*(\d+\.?\d*):\s*(.+)\s*$/);
+                    if (match && !match[3].includes('[')) {
+                        const timestamp = parseFloat(match[1]);
+                        const endTimestamp = parseFloat(match[2]);
+                        return { speaker: '', target: match[3].trim(), english: '', timestamp: timestamp, endTimestamp: endTimestamp };
+                    }
+                } else {
+                    match = l.match(/^(.+?):\s*(.+?)\s*\[(.+?)\]/);
+                    if (match) {
+                        return { speaker: match[1], target: match[2], english: match[3], timestamp: null };
+                    }
+                }
+                debugLog(`Failed to parse line ${i}: "${l}"`);
+                return null;
+            }).filter(x => x !== null);
+            
+            debugLog(`Successfully parsed ${lines.length} lines`);
+            return hasTimestamps;
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 100px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+                padding: 12px 24px;
+                border-radius: 30px;
+                color: white;
+                font-weight: 500;
+                z-index: 1000;
+                animation: fadeInUp 0.3s ease;
+            `;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s';
+                setTimeout(() => toast.remove(), 300);
+            }, 2000);
+        }
+
+        function updateProgress() {
+            if (lines.length > 0) {
+                const progress = ((currentLineIndex) / lines.length) * 100;
+                progressFill.style.width = `${progress}%`;
+            }
+        }
+
+        async function startCalibration(forceRecalibrate = false) {
+            if (!currentAudio) {
+                showToast('Please load an audio file first');
+                return;
+            }
+            const hasTimestamps = await parseTextFile();
+            if (lines.length === 0) {
+                showToast('Could not parse text. Check format.');
+                return;
+            }
+
+            progressBar.style.display = 'block';
+
+            if (hasTimestamps && !forceRecalibrate) {
+                mode = 'playback';
+                currentLineIndex = 0;
+                document.getElementById('setup-panel').style.display = 'none';
+                localStorage.setItem('saved_lines', JSON.stringify(lines));
+                console.log('Parsed lines:', lines);
+                renderList();
+                updateProgress();
+                updateHighlightsUI();
+                return;
+            }
+
+            // Calibration Mode Setup
+            mode = 'calibration';
+            currentLineIndex = 0;
+            
+            // Reset audio for calibration
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+            
+            // If recalibrating, clear existing endTimestamps so they don't conflict
+            if (forceRecalibrate) {
+                lines.forEach(l => delete l.endTimestamp);
+                showToast('Tap SPACE or Screen when each line STARTS');
+            }
+            
+            renderList();
+            document.getElementById('setup-panel').style.display = 'none';
+            document.getElementById('calib-indicator').style.display = 'block';
+            
+            currentAudio.play();
+        }
+
+        function finishCalibration() {
+            if (currentAudio) {
+                currentAudio.pause();
+            }
+            mode = 'playback';
+            currentLineIndex = 0;
+            document.getElementById('calib-indicator').style.display = 'none';
+            
+            localStorage.setItem('saved_lines', JSON.stringify(lines));
+            
+            showToast('Calibration complete! 🎉');
+            document.getElementById('setup-panel').style.display = 'block';
+            // Don't show playback controls here because we go back to setup panel first
+            renderList();
+            updateProgress();
+        }
+
+        function loadSavedSession() {
+            lines = JSON.parse(localStorage.getItem('saved_lines'));
+            if(!currentAudio) {
+                showToast('Please select the audio file first');
+                return;
+            }
+            mode = 'playback';
+            currentLineIndex = 0;
+            document.getElementById('setup-panel').style.display = 'none';
+            progressBar.style.display = 'block';
+            renderList();
+            updateProgress();
+            updateHighlightsUI();
+        }
+
+        function clearData() {
+            localStorage.removeItem('saved_lines');
+            location.reload();
+        }
+
+        function handleInteraction() {
+            if (mode === 'calibration' && currentAudio) {
+                if (currentLineIndex < lines.length) {
+                    lines[currentLineIndex].timestamp = currentAudio.currentTime;
+                    currentLineIndex++;
+                    renderList();
+                    const activeEl = document.querySelector('.active');
+                    if(activeEl) activeEl.scrollIntoView({behavior: "smooth", block: "start"});
+                } 
+                
+                if (currentLineIndex >= lines.length) {
+                    finishCalibration();
+                }
+            }
+        }
+
+        let playTimeout = null;
+
+        function playLine(index) {
+            if (mode !== 'playback') return;
+            
+            const line = lines[index];
+            if (!line) return;
+            
+            debugLog('--- playLine called for index:', index, '---');
+
+            // 1. Stop current playback
+            if (currentAudio) {
+                currentAudio.pause();
+            } else {
+                showToast('No audio loaded');
+                return;
+            }
+
+            // 2. Calculate End Time
+            let endTime;
+            if (line.endTimestamp) {
+                endTime = line.endTimestamp;
+            } else if (index + 1 < lines.length) {
+                endTime = lines[index + 1].timestamp;
+            } else {
+                endTime = line.timestamp + 10;
+            }
+            
+            // 3. Update State
+            playbackState.endTime = endTime - 0.05;
+            playbackState.activeLineIndex = index;
+            playbackState.isPlaying = true;
+
+            debugLog(`Playback: ${line.timestamp} -> ${playbackState.endTime}`);
+
+            // 4. Visual Updates
+            document.querySelectorAll('.line-item').forEach((el, i) => {
+                el.classList.remove('active');
+                if (i < index) el.classList.add('done');
+            });
+            const lineItems = document.querySelectorAll('.line-item');
+            if (lineItems[index]) {
+                lineItems[index].classList.add('active');
+                lineItems[index].classList.remove('done');
+                // Scroll to top of viewport with padding
+                lineItems[index].scrollIntoView({behavior: "smooth", block: "start"});
+            }
+            const targetEl = document.getElementById(`target-${index}`);
+            if(targetEl) targetEl.classList.remove('hidden-text');
+
+            // 5. Seek and play
+            if (audioReady) {
+                currentAudio.currentTime = line.timestamp;
+                currentAudio.play().catch(e => console.error("Play failed:", e));
+            } else {
+                // Wait for audio to be ready
+                debugLog('Audio not ready, waiting for loadedmetadata...');
+                const onReady = () => {
+                    currentAudio.removeEventListener('loadedmetadata', onReady);
+                    audioReady = true;
+                    currentAudio.currentTime = line.timestamp;
+                    currentAudio.play().catch(e => console.error("Play failed:", e));
+                };
+                currentAudio.addEventListener('loadedmetadata', onReady);
+            }
+        }
+
+        function renderList() {
+            if (lines.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📚</div>
+                        <h3>Ready to Learn</h3>
+                        <p>Add your audio and dialogue text above to begin</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Detect unique speakers for color assignment
+            const speakers = [...new Set(lines.map(l => l.speaker).filter(s => s))];
+            const speakerColors = {};
+            speakers.forEach((s, i) => {
+                speakerColors[s] = i % 2 === 0 ? 'a' : 'b';
+            });
+
+            container.innerHTML = '';
+            lines.forEach((line, index) => {
+                const div = document.createElement('div');
+                div.className = `line-item ${index === currentLineIndex ? 'active' : ''} ${index < currentLineIndex ? 'done' : ''}`;
+                
+                let targetClass = '';
+                if (mode === 'playback' && index >= currentLineIndex) {
+                    targetClass = 'hidden-text';
+                }
+
+                // Use speaker-based colors, or alternate if no speaker
+                const colorKey = line.speaker ? speakerColors[line.speaker] : (index % 2 === 0 ? 'a' : 'b');
+                const speakerClass = colorKey === 'a' ? 'speaker-a' : 'speaker-b';
+                const speakerEmoji = colorKey === 'a' ? '🔵' : '🟢';
+                const speakerLabel = line.speaker ? ` ${line.speaker}` : '';
+
+                div.innerHTML = `
+                    <div class="speaker ${speakerClass}">${speakerEmoji}${speakerLabel}</div>
+                    <div class="english">${line.english}</div>
+                    <div class="target ${targetClass}" id="target-${index}" data-translation="${encodeURIComponent(line.english)}">${line.target}</div>
+                `;
+
+                if (mode === 'playback') {
+                    div.onclick = (e) => {
+                        // Don't trigger playback if selecting text
+                        const selection = window.getSelection();
+                        if (selection && selection.toString().trim()) return;
+                        
+                        currentLineIndex = index + 1;
+                        updateProgress();
+                        playLine(index);
+                    };
+                }
+                
+                container.appendChild(div);
+            });
+
+            const active = document.querySelector('.active');
+            if(active) active.scrollIntoView({behavior: "smooth", block: "start"});
+        }
+        
+        // Handle text selection for highlighting
+        function handleTextSelection() {
+            if (mode !== 'playback') return;
+            
+            const selection = window.getSelection();
+            const selectedText = selection.toString().trim();
+            
+            if (!selectedText) return;
+            
+            // Check if selection is within a .target element
+            const anchorNode = selection.anchorNode;
+            if (!anchorNode) return;
+            
+            const targetEl = anchorNode.parentElement?.closest('.target') || 
+                            (anchorNode.nodeType === 1 ? anchorNode.closest('.target') : null);
+            
+            if (targetEl && !targetEl.classList.contains('hidden-text')) {
+                // Get the translation from the data attribute
+                const translation = decodeURIComponent(targetEl.dataset.translation || '');
+                addHighlight(selectedText, translation);
+                // Clear selection
+                selection.removeAllRanges();
+            }
+        }
+        
+        // Listen for text selection
+        document.addEventListener('mouseup', handleTextSelection);
+        document.addEventListener('touchend', () => {
+            // Small delay for touch selection to complete
+            setTimeout(handleTextSelection, 150);
+        });
+
+        // Keyboard controls
+        document.body.onkeyup = function(e) {
+            if (e.code === 'Space' || e.code === 'ArrowDown') {
+                e.preventDefault();
+                if (mode === 'calibration') {
+                    handleInteraction();
+                } else if (mode === 'playback' && currentLineIndex < lines.length) {
+                    const indexToPlay = currentLineIndex;
+                    currentLineIndex++;
+                    updateProgress();
+                    playLine(indexToPlay);
+                }
+            } else if (e.code === 'ArrowUp') {
+                e.preventDefault();
+                if (mode === 'playback' && currentLineIndex > 0) {
+                    currentLineIndex--;
+                    updateProgress();
+                    playLine(currentLineIndex);
+                }
+            } else if (e.code === 'KeyR') {
+                // Replay current line
+                replayCurrentLine();
+            }
+        }
+        
+        document.body.onkeydown = function(e) {
+            if ((e.code === 'Space' || e.code === 'ArrowDown' || e.code === 'ArrowUp') && mode !== 'setup') {
+                e.preventDefault();
+            }
+        }
+        
+        // Touch controls for calibration
+        document.getElementById('calib-indicator').onclick = handleInteraction;
+
+        // ============================================
+        // HIGHLIGHTS FUNCTIONALITY
+        // ============================================
+        
+        // Update highlights UI
+        function updateHighlightsUI() {
+            const sidebar = document.getElementById('highlights-sidebar');
+            const count = document.getElementById('highlights-count');
+            const list = document.getElementById('highlights-list');
+            const appContainer = document.querySelector('.app-container');
+            
+            // Show sidebar in playback mode
+            if (mode === 'playback') {
+                sidebar.classList.add('show');
+                appContainer.classList.add('has-sidebar');
+            } else {
+                sidebar.classList.remove('show');
+                appContainer.classList.remove('has-sidebar');
+            }
+            
+            count.textContent = highlights.length;
+            
+            if (highlights.length === 0) {
+                list.innerHTML = '<div class="highlights-sidebar-empty">Select Russian text to add highlights</div>';
+            } else {
+                list.innerHTML = highlights.map((h, i) => `
+                    <div class="highlights-sidebar-item">
+                        <button class="highlights-sidebar-remove" onclick="removeHighlight(${i})">✕</button>
+                        <div class="highlights-sidebar-russian">${h.russian}</div>
+                        <div class="highlights-sidebar-translation">${h.translation || ''}</div>
+                    </div>
+                `).join('');
+            }
+        }
+        
+        function addHighlight(russian, translation = '') {
+            const trimmedRussian = russian.trim();
+            if (!trimmedRussian) return false;
+            
+            // Avoid duplicates
+            if (highlights.some(h => h.russian === trimmedRussian)) {
+                showToast('Already in highlights');
+                return false;
+            }
+            
+            highlights.push({
+                russian: trimmedRussian,
+                translation: translation.trim(),
+                timestamp: new Date().toISOString()
+            });
+            
+            localStorage.setItem('dialogue_highlights', JSON.stringify(highlights));
+            updateHighlightsUI();
+            showToast('✓ Added!');
+            return true;
+        }
+        
+        function removeHighlight(index) {
+            highlights.splice(index, 1);
+            localStorage.setItem('dialogue_highlights', JSON.stringify(highlights));
+            updateHighlightsUI();
+        }
+        
+        function clearAllHighlights() {
+            if (confirm('Clear all highlights?')) {
+                highlights = [];
+                localStorage.setItem('dialogue_highlights', JSON.stringify(highlights));
+                updateHighlightsUI();
+                renderList(); // Update the + buttons
+                showToast('All highlights cleared');
+            }
+        }
+        
+        function sendHighlightsEmail() {
+            if (highlights.length === 0) {
+                showToast('No highlights to send');
+                return;
+            }
+            
+            const subject = encodeURIComponent('Russian Highlights - ' + new Date().toLocaleDateString());
+            const body = encodeURIComponent(
+                'Minhas frases em Russo:\n\n' +
+                highlights.map((h, i) => 
+                    `${i + 1}. ${h.russian}\n   → ${h.translation || '(sem tradução)'}`
+                ).join('\n\n') +
+                '\n\n---\nEnviado pelo Dialogue Player'
+            );
+            
+            window.open(`mailto:${HIGHLIGHTS_EMAIL}?subject=${subject}&body=${body}`, '_blank');
+            showToast('Opening email...');
+        }
+
+        // Add CSS animation for toast
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeInUp {
+                from {
+                    opacity: 0;
+                    transform: translateX(-50%) translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(0);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // ============================================
+        // BACKEND API INTEGRATION
+        // ============================================
+        
+        // CONFIGURATION - Replace with your Render URL
+        // IMPORTANT: No trailing slash
+        const BACKEND_URL = 'https://dialogue-backend.onrender.com';
+
+        // 1. Load the list of dialogues when page opens
+        async function loadDialogueList() {
+            const select = document.getElementById('dialogue-select');
+            select.innerHTML = '<option>Loading...</option>';
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/dialogues`);
+                if (!res.ok) throw new Error('Backend error');
+                
+                const dialogues = await res.json();
+                
+                select.innerHTML = '<option value="">Select dialogue...</option>';
+                dialogues.forEach(d => {
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify(d); // Store IDs in value
+                    option.textContent = d.label;
+                    select.appendChild(option);
+                });
+
+                // Show the dropdown area (hide the connect button since we don't need it)
+                document.getElementById('drive-status').style.display = 'none';
+                document.getElementById('drive-files').style.display = 'block';
+
+            } catch (err) {
+                console.error(err);
+                showToast('Error connecting to server. Is it waking up?');
+                select.innerHTML = '<option>Connection Failed - Retry</option>';
+                // Allow retry on click
+                select.onclick = () => loadDialogueList();
+            }
+        }
+
+        // 2. Load a specific dialogue when selected
+        async function loadFromDrive() {
+            const select = document.getElementById('dialogue-select');
+            if (!select.value) return;
+
+            let data;
+            try {
+                data = JSON.parse(select.value); // { label, audioId, transcriptId }
+            } catch (e) {
+                return; // Invalid selection
+            }
+            
+            showToast(`Loading ${data.label}...`);
+
+            try {
+                // A. Fetch Transcript Text
+                const textRes = await fetch(`${BACKEND_URL}/api/file/${data.transcriptId}`);
+                if (!textRes.ok) throw new Error('Failed to fetch transcript');
+                const text = await textRes.text();
+                document.getElementById('dialogueText').value = text;
+
+                // B. Set Audio Source directly to stream URL
+                const audioUrl = `${BACKEND_URL}/api/file/${data.audioId}`;
+                
+                // Set up the player
+                if (currentAudio) currentAudio.pause();
+                currentAudio = new Audio(audioUrl);
+                currentAudio.preload = 'auto';
+                audioReady = false;
+                
+                currentAudio.addEventListener('loadedmetadata', () => {
+                    audioReady = true;
+                    debugLog('Audio ready. Duration:', currentAudio.duration);
+                });
+                
+                // UI Updates
+                document.getElementById('file-name').textContent = data.label;
+                document.getElementById('file-info').textContent = "Streaming from server";
+                document.getElementById('file-display').classList.add('has-file');
+
+                showToast('Loaded! Press Start.');
+
+            } catch (err) {
+                console.error(err);
+                showToast('Error loading files: ' + err.message);
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', loadDialogueList);
+    </script>
+</body>
+</html>
+``` 
