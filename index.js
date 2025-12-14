@@ -1,3 +1,6 @@
+
+
+
 const express = require('express');
 const { google } = require('googleapis');
 const cors = require('cors');
@@ -12,15 +15,17 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB!'))
     .catch(err => console.error('Mongo Error:', err));
 
-// 2. DEFINE SCHEMA
+// 2. DEFINE SCHEMA (UPDATED FOR FLASHCARDS)
 const DialogueSchema = new mongoose.Schema({
     number: { type: Number, required: true, unique: true },
     title: String,
     audioDriveId: String,
     transcriptText: String,
     highlights: [{
-        russian: String,
-        translation: String,
+        russian: String,        // The highlighted word/phrase
+        translation: String,    // The general context translation
+        fullSentence: String,   // NEW: The full Russian sentence context
+        translatedWord: String, // NEW: The specific Google Translate result
         date: { type: Date, default: Date.now }
     }]
 });
@@ -49,13 +54,14 @@ async function downloadDriveText(fileId) {
     return res.data;
 }
 
-// A. LIST DIALOGUES (Improved)
+// ---------------- API ENDPOINTS ----------------
+
+// A. LIST DIALOGUES
 app.get('/api/dialogues', async (req, res) => {
     try {
         const auth = getAuth();
         const drive = google.drive({ version: 'v3', auth });
         
-        // Look for BOTH audio and transcripts
         const driveRes = await drive.files.list({
             q: `'${FOLDER_ID}' in parents and trashed=false`,
             fields: 'files(id, name)',
@@ -65,16 +71,13 @@ app.get('/api/dialogues', async (req, res) => {
         const dbDialogues = await Dialogue.find();
         const dialogues = {};
 
-        // Pair up Drive files
         driveRes.data.files.forEach(file => {
-            // Check for audioN
             const audioMatch = file.name.match(/^audio(\d+)\./i);
             if (audioMatch) {
                 const num = parseInt(audioMatch[1]);
                 if (!dialogues[num]) dialogues[num] = { number: num };
                 dialogues[num].audioId = file.id;
             }
-            // Check for transcriptN
             const textMatch = file.name.match(/^transcript(\d+)\.txt$/i);
             if (textMatch) {
                 const num = parseInt(textMatch[1]);
@@ -83,37 +86,31 @@ app.get('/api/dialogues', async (req, res) => {
             }
         });
 
-        // Merge with DB data
         const result = Object.values(dialogues).map(d => {
             const dbEntry = dbDialogues.find(db => db.number === d.number);
             return {
                 number: d.number,
                 label: dbEntry?.title || `Dialogue ${d.number}`,
                 audioId: d.audioId,
-                transcriptId: d.transcriptId, // We send this just in case
+                transcriptId: d.transcriptId,
                 hasHighlights: (dbEntry?.highlights || []).length > 0
             };
         }).sort((a, b) => a.number - b.number);
 
         res.json(result);
-
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// B. GET SINGLE DIALOGUE (With Smart Import)
+// B. GET SINGLE DIALOGUE
 app.get('/api/dialogues/:number', async (req, res) => {
     try {
         const num = parseInt(req.params.number);
         let doc = await Dialogue.findOne({ number: num });
 
-        // LOGIC: If DB has no text, try to fetch from Drive!
         if (!doc || !doc.transcriptText) {
-            console.log(`DB empty for Dialogue ${num}. Checking Drive...`);
-            
-            // 1. Find the transcript file ID in Drive again
             const auth = getAuth();
             const drive = google.drive({ version: 'v3', auth });
             const listRes = await drive.files.list({
@@ -122,15 +119,12 @@ app.get('/api/dialogues/:number', async (req, res) => {
             });
 
             if (listRes.data.files.length > 0) {
-                // 2. Found it! Download text
                 const txtId = listRes.data.files[0].id;
                 const textContent = await downloadDriveText(txtId);
                 
-                // 3. Save to DB so we don't have to ask Drive next time
                 if (!doc) doc = new Dialogue({ number: num, title: `Dialogue ${num}` });
                 doc.transcriptText = textContent;
                 await doc.save();
-                console.log(`Imported text for Dialogue ${num} from Drive.`);
             }
         }
 
@@ -138,9 +132,7 @@ app.get('/api/dialogues/:number', async (req, res) => {
             transcript: doc?.transcriptText || "",
             highlights: doc?.highlights || []
         });
-
     } catch (error) {
-        console.error(error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -153,6 +145,7 @@ app.post('/api/dialogues/:number/highlights', async (req, res) => {
         if (!doc) {
             doc = new Dialogue({ number: num, title: `Dialogue ${num}` });
         }
+        // Save the full object (including fullSentence and translatedWord)
         doc.highlights = req.body;
         await doc.save();
         res.json({ success: true });
@@ -161,7 +154,37 @@ app.post('/api/dialogues/:number/highlights', async (req, res) => {
     }
 });
 
-// D. STREAM AUDIO
+// D. NEW: GET ALL HIGHLIGHTS FOR TRAINING
+app.get('/api/all-highlights', async (req, res) => {
+    try {
+        // Find dialogues that have highlights
+        const dialogues = await Dialogue.find({ 'highlights.0': { $exists: true } });
+        
+        const allHighlights = [];
+        
+        dialogues.forEach(d => {
+            if (d.highlights) {
+                d.highlights.forEach(h => {
+                    allHighlights.push({
+                        russian: h.russian,
+                        translation: h.translation,
+                        // Provide fallbacks in case old data doesn't have these fields
+                        fullSentence: h.fullSentence || h.russian, 
+                        translatedWord: h.translatedWord || null,
+                        dialogueNumber: d.number
+                    });
+                });
+            }
+        });
+        
+        res.json(allHighlights);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to fetch highlights' });
+    }
+});
+
+// E. STREAM AUDIO
 app.get('/api/audio/:fileId', async (req, res) => {
     try {
         const auth = getAuth();
