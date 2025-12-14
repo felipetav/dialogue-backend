@@ -3,34 +3,29 @@ const { google } = require('googleapis');
 const cors = require('cors');
 const app = express();
 
-// Allow your GitHub Pages to talk to this server
 app.use(cors());
+// IMPORTANT: This allows us to receive JSON data from the frontend
+app.use(express.json()); 
 
-// Load credentials from Environment Variable (we set this in Step 3)
 const getAuth = () => {
-    // We will paste the JSON content into an ENV variable named GOOGLE_CREDENTIALS
     const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
     return new google.auth.GoogleAuth({
         credentials,
-        scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+        // CHANGED: We removed ".readonly" to allow saving files
+        scopes: ['https://www.googleapis.com/auth/drive'],
     });
 };
 
-// Replace this with your specific Google Drive Folder ID
-// (Open folder in browser -> look at URL -> folders/YOUR_ID_IS_HERE)
-const FOLDER_ID = '1xA6Ckfyi_mXEES4h_olxmnJm2i8ueECR'; 
+const FOLDER_ID = 'YOUR_DRIVE_FOLDER_ID_HERE'; // <--- MAKE SURE THIS IS CORRECT
 
-app.get('/', (req, res) => {
-    res.send('Dialogue Backend is running! 🚀');
-});
+app.get('/', (req, res) => res.send('Backend is running with Write Access! 🚀'));
 
-// 1. List Dialogues
+// 1. List Dialogues (Updated to find highlights)
 app.get('/api/dialogues', async (req, res) => {
     try {
         const auth = getAuth();
         const drive = google.drive({ version: 'v3', auth });
 
-        // List all files in the folder
         const response = await drive.files.list({
             q: `'${FOLDER_ID}' in parents and trashed=false`,
             fields: 'files(id, name)',
@@ -40,12 +35,11 @@ app.get('/api/dialogues', async (req, res) => {
         const files = response.data.files;
         const dialogues = {};
 
-        // Group audio and transcript by number
         files.forEach(file => {
-            // Check for audio1.mp3/wav/webm
             const audioMatch = file.name.match(/^audio(\d+)\.(mp3|wav|webm)$/i);
-            // Check for transcript1.txt
             const textMatch = file.name.match(/^transcript(\d+)\.txt$/i);
+            // NEW: Look for highlights files
+            const highMatch = file.name.match(/^highlights(\d+)\.json$/i);
 
             if (audioMatch) {
                 const num = audioMatch[1];
@@ -57,9 +51,13 @@ app.get('/api/dialogues', async (req, res) => {
                 if (!dialogues[num]) dialogues[num] = {};
                 dialogues[num].transcriptId = file.id;
             }
+            if (highMatch) {
+                const num = highMatch[1];
+                if (!dialogues[num]) dialogues[num] = {};
+                dialogues[num].highlightsId = file.id;
+            }
         });
 
-        // Only return pairs that have BOTH audio and text
         const result = Object.keys(dialogues)
             .filter(num => dialogues[num].audioId && dialogues[num].transcriptId)
             .sort((a, b) => parseInt(a) - parseInt(b))
@@ -77,7 +75,7 @@ app.get('/api/dialogues', async (req, res) => {
     }
 });
 
-// 2. Stream File (Audio or Text)
+// 2. Stream File (Unchanged)
 app.get('/api/file/:fileId', async (req, res) => {
     try {
         const auth = getAuth();
@@ -87,17 +85,55 @@ app.get('/api/file/:fileId', async (req, res) => {
             { fileId: req.params.fileId, alt: 'media' },
             { responseType: 'stream' }
         );
-
-        // Pipe the stream directly to the response
         result.data.pipe(res);
-
     } catch (error) {
-        console.error(error);
         res.status(500).send('Error streaming file');
     }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+// 3. NEW: Save Highlights
+app.post('/api/dialogues/:number/highlights', async (req, res) => {
+    try {
+        const auth = getAuth();
+        const drive = google.drive({ version: 'v3', auth });
+        const number = req.params.number;
+        const filename = `highlights${number}.json`;
+        const newContent = JSON.stringify(req.body, null, 2);
+
+        // First, check if file exists
+        const listRes = await drive.files.list({
+            q: `name='${filename}' and '${FOLDER_ID}' in parents and trashed=false`,
+            fields: 'files(id)',
+        });
+
+        if (listRes.data.files.length > 0) {
+            // UPDATE existing file
+            const fileId = listRes.data.files[0].id;
+            await drive.files.update({
+                fileId: fileId,
+                media: { mimeType: 'application/json', body: newContent }
+            });
+            res.json({ status: 'updated', fileId });
+        } else {
+            // CREATE new file
+            const createRes = await drive.files.create({
+                requestBody: {
+                    name: filename,
+                    parents: [FOLDER_ID]
+                },
+                media: {
+                    mimeType: 'application/json',
+                    body: newContent
+                }
+            });
+            res.json({ status: 'created', fileId: createRes.data.id });
+        }
+
+    } catch (error) {
+        console.error('Save error:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
