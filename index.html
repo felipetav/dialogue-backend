@@ -449,6 +449,38 @@
             display: flex;
         }
 
+        /* --- NEW PLAYER SIDEBAR (LEFT) --- */
+        .player-sidebar {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            width: 220px;
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            display: none;
+            flex-direction: column;
+            z-index: 50;
+            padding: 16px;
+            gap: 12px;
+        }
+
+        .player-sidebar.show {
+            display: flex;
+        }
+
+        .player-sidebar h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        /* -------------------------------- */
+
         .highlights-sidebar-header {
             padding: 16px;
             border-bottom: 1px solid var(--border);
@@ -550,10 +582,17 @@
                 padding-right: 360px;
             }
         }
+        
+        /* New Media Query for Left Sidebar */
+        @media (min-width: 1200px) {
+            .app-container.has-sidebar #scroll-container {
+                padding-left: 260px; /* Make space for left player sidebar */
+            }
+        }
 
         /* Hide sidebar on small screens, show floating button instead */
         @media (max-width: 899px) {
-            .highlights-sidebar {
+            .highlights-sidebar, .player-sidebar {
                 display: none !important;
             }
         }
@@ -916,12 +955,24 @@
                 </button>
             </div>
         </div>
+        
+        <div class="player-sidebar" id="player-sidebar">
+            <h3>Player Controls</h3>
+            <button class="primary" onclick="toggleAutoPlay()" id="auto-play-btn">
+                <span>⏯️</span> Play All
+            </button>
+            <button class="secondary" onclick="pausePlayback()">
+                <span>⏸️</span> Pause
+            </button>
+            <button class="secondary" onclick="restartPlayback()">
+                <span>⏮️</span> Restart
+            </button>
+        </div>
 
         <div id="scroll-container">
             <div id="lines-list"></div>
         </div>
 
-        <!-- Flashcard Training Mode -->
         <div class="flashcard-container" id="flashcard-container">
             <div class="flashcard-progress" id="flashcard-progress">Card 1 of 10</div>
             
@@ -1000,6 +1051,9 @@
         let currentDialogueNumber = null;
         const HIGHLIGHTS_EMAIL = 'nasrundin@gmail.com';
         let highlights = []; 
+        
+        // NEW STATE FOR AUTO PLAY
+        let isAutoPlay = false;
 
         function debugLog(msg, ...args) {
             console.log(`[DEBUG ${new Date().toISOString().split('T')[1].slice(0, -1)}] ${msg}`, ...args);
@@ -1022,10 +1076,34 @@
             if (playbackState.isPlaying && currentAudio) {
                 if (!currentAudio.paused) {
                     if (currentAudio.currentTime >= playbackState.endTime) {
-                        currentAudio.pause();
-                        playbackState.isPlaying = false;
-                        const activeEl = document.querySelector('.line-item.active');
-                        if (activeEl) activeEl.classList.add('done');
+                        // Check if we are in auto play mode
+                        if (isAutoPlay) {
+                            // If we have more lines, play the next one
+                            if (currentLineIndex < lines.length) {
+                                playLine(currentLineIndex); // Logic inside playLine will increment later or we rely on logic below
+                                // playLine updates currentLineIndex by logic in onclick, 
+                                // here we need to manually move to next.
+                                // Logic correction: playLine sets playbackState.
+                                // We need to trigger next line.
+                                // Actually, existing click handler does: currentLineIndex = index + 1; then playLine(index)
+                                // So we need to replicate that:
+                                const nextIndex = currentLineIndex; 
+                                currentLineIndex++; // Advance pointer for next time
+                                updateProgress();
+                                playLine(nextIndex);
+                            } else {
+                                // End of dialogue
+                                isAutoPlay = false;
+                                currentAudio.pause();
+                                playbackState.isPlaying = false;
+                                document.getElementById('auto-play-btn').innerHTML = '<span>⏯️</span> Play All';
+                            }
+                        } else {
+                            currentAudio.pause();
+                            playbackState.isPlaying = false;
+                            const activeEl = document.querySelector('.line-item.active');
+                            if (activeEl) activeEl.classList.add('done');
+                        }
                     }
                 }
             }
@@ -1174,6 +1252,55 @@
                 });
             }
         }
+        
+        // --- NEW PLAYER CONTROLS FUNCTIONS ---
+        function toggleAutoPlay() {
+            if (mode !== 'playback') return;
+            isAutoPlay = !isAutoPlay;
+            const btn = document.getElementById('auto-play-btn');
+            
+            if (isAutoPlay) {
+                btn.innerHTML = '<span>⏹️</span> Stop Auto';
+                btn.classList.add('active'); // You can add CSS for this if desired
+                if (!playbackState.isPlaying) {
+                     // Start playing current line if paused
+                     playLine(currentLineIndex);
+                     currentLineIndex++;
+                     updateProgress();
+                }
+            } else {
+                btn.innerHTML = '<span>⏯️</span> Play All';
+                btn.classList.remove('active');
+            }
+        }
+
+        function pausePlayback() {
+            if (currentAudio) {
+                currentAudio.pause();
+                playbackState.isPlaying = false;
+                isAutoPlay = false; // Turn off autoplay on manual pause
+                document.getElementById('auto-play-btn').innerHTML = '<span>⏯️</span> Play All';
+            }
+        }
+
+        function restartPlayback() {
+            if (mode !== 'playback') return;
+            currentLineIndex = 0;
+            updateProgress();
+            
+            // Reset UI
+            document.querySelectorAll('.line-item').forEach(el => {
+                el.classList.remove('active', 'done');
+            });
+            document.querySelectorAll('.target').forEach(el => {
+                el.classList.add('hidden-text');
+            });
+            
+            // Play first line
+            playLine(0);
+            currentLineIndex = 1;
+        }
+        // -------------------------------------
 
         function renderList() {
             if (lines.length === 0) {
@@ -1207,6 +1334,8 @@
                         if (window.getSelection().toString().trim()) return;
                         currentLineIndex = index + 1;
                         updateProgress();
+                        isAutoPlay = false; // Clicking a line manually stops auto-play
+                        document.getElementById('auto-play-btn').innerHTML = '<span>⏯️</span> Play All';
                         playLine(index);
                     };
                 }
@@ -1369,10 +1498,12 @@
             const count = document.getElementById('highlights-count');
             const footer = document.querySelector('.highlights-sidebar-footer');
             const sidebar = document.getElementById('highlights-sidebar');
+            const playerSidebar = document.getElementById('player-sidebar');
             const app = document.querySelector('.app-container');
 
             if (mode === 'playback') {
                 sidebar.classList.add('show');
+                playerSidebar.classList.add('show'); // Show Player Sidebar
                 app.classList.add('has-sidebar');
             }
             
@@ -1419,7 +1550,33 @@
 
         // Add Key Listener
         document.body.onkeyup = (e) => {
-            if (e.code==='Space') { e.preventDefault(); if (mode==='playback') playLine(currentLineIndex++); }
+            if (mode === 'playback') {
+                // Play / Next Line
+                if (e.code === 'Space' || e.code === 'ArrowDown') { 
+                    e.preventDefault(); 
+                    if (currentLineIndex < lines.length) {
+                        playLine(currentLineIndex); 
+                        currentLineIndex++; // Prepare for next line
+                        updateProgress();
+                    }
+                }
+                // Previous Line
+                if (e.code === 'ArrowUp') {
+                    e.preventDefault();
+                    if (currentLineIndex > 1) { // If at 1, prev is 0. If at 0, nothing.
+                        currentLineIndex -= 2; // Move pointer back 2 steps (curr is next, so -1 is current playing, -2 is prev)
+                        playLine(currentLineIndex);
+                        currentLineIndex++; // Advance pointer back to next
+                        updateProgress();
+                    } else if (currentLineIndex === 1) {
+                         currentLineIndex = 0;
+                         playLine(0);
+                         currentLineIndex = 1;
+                         updateProgress();
+                    }
+                }
+            }
+
             if (e.code==='ArrowRight' && mode==='flashcard') nextCard();
             if (e.code==='ArrowLeft' && mode==='flashcard') prevCard();
             if (e.code==='Enter' && mode==='flashcard') flipCard();
@@ -1521,6 +1678,10 @@
             mode = 'flashcard';
             document.getElementById('setup-panel').style.display = 'none';
             document.getElementById('scroll-container').style.display = 'none';
+            // Hide sidebars in flashcard mode
+            document.getElementById('highlights-sidebar').classList.remove('show');
+            document.getElementById('player-sidebar').classList.remove('show');
+            
             document.getElementById('flashcard-container').classList.add('show');
             
             showCard();
